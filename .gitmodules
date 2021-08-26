@@ -1,0 +1,3 @@
+[submodule "libs/nats-rs"]
+	path = libs/nats-rs
+	url = git@github.com:Itsusinn/nats.rs.git
