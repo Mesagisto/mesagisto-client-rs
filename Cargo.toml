@@ -1,0 +1,45 @@
+[package]
+name = "mesagisto-client"
+authors = ["Itsusinn奕䜣 <itsusinn@foxmail.com>"]
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+
+once_cell = "1.8"
+smol = "1.2"
+log = "0.4"
+aes-gcm = {version = "0.9",features = ["std"] }
+
+dashmap = { version = "4.0" , features = ["serde"] }
+rand = "0.8"
+
+futures = "0.3.17"
+base64-url = "1.4"
+serde = "1.0.130"
+serde_cbor = "0.11.2"
+serde_bytes = "0.11.5"
+
+arcstr = { version = "1.1.1", features = ["serde"] }
+bytes = { version = "1.1.0", features = ["serde"] }
+
+sha2 = "0.9.8"
+either = "1.6.1"
+generic-array = "0.14.4"
+typenum = "1.14.0"
+thiserror = "1.0.29"
+tokio = { version =  "1.12.0", features = ["rt-multi-thread", "macros","signal","sync","fs"] }
+anyhow = {version = "1.0.44", features=["backtrace"]}
+
+# file system
+notify = "5.0.0-pre.12"
+# async
+hex = "0.4"
+nats = "0.15"
+singleton = { git = "https://github.com/Itsusinn/singleton-rs.git", rev = "bee321c" }
+uuid = { version = "0.8", features = ["serde", "v4"] }
+reqwest = { version = "0.11" ,default-features = false ,features = ["rustls","socks","rustls-tls-webpki-roots"] }
+
+
+bindgen = {version = "0.59.0", default-features = false , features= ["runtime"] }
+sled = "0.34.7"
