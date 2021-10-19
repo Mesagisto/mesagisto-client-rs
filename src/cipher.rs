@@ -13,9 +13,11 @@ pub enum CipherError {
 type Key = GenericArray<u8, <sha2::Sha256 as sha2::Digest>::OutputSize>;
 #[derive(Singleton, Default)]
 pub struct Cipher {
-  pub inner: LateInit<AesGcm<Aes256, U12>>,
+  inner: LateInit<AesGcm<Aes256, U12>>,
   pub key: LateInit<Key>,
   pub origin_key: LateInit<String>,
+  pub enable: LateInit<bool>,
+  pub refuse_plain: LateInit<bool>
 }
 
 impl Deref for Cipher {
@@ -27,24 +29,34 @@ impl Deref for Cipher {
 }
 
 impl Cipher {
-  pub fn init(&self, key: &String) {
-    use sha2::{Digest, Sha256};
-    self.origin_key.init(key.to_owned());
-    let mut hasher = Sha256::new();
-    hasher.update(key.as_bytes());
-    let hash_key = hasher.finalize();
+  pub fn init(&self, key: &String,refuse_plain: &bool) {
+    self.enable.init(true);
+    self.refuse_plain.init(refuse_plain.clone());
+
+    let hash_key = {
+      use sha2::{Digest, Sha256};
+      self.origin_key.init(key.to_owned());
+      let mut hasher = Sha256::new();
+      hasher.update(key.as_bytes());
+      hasher.finalize()
+    };
     self.key.init(hash_key);
-    use aes_gcm::aead::NewAead;
-    use aes_gcm::Aes256Gcm;
-    let key = aes_gcm::Key::from_slice(self.key.as_slice());
-    let cipher = Aes256Gcm::new(key);
+    let cipher = {
+      use aes_gcm::aead::NewAead;
+      use aes_gcm::Aes256Gcm;
+      let key = aes_gcm::Key::from_slice(self.key.as_slice());
+      Aes256Gcm::new(key)
+    };
     self.inner.init(cipher);
+  }
+  pub fn deinit(&self) {
+    self.enable.init(false);
   }
   pub fn new_nonce(&self) -> [u8; 12] {
     use rand::RngCore;
     let mut rng = rand::thread_rng();
     let mut nonce = [0u8; 12];
     rng.fill_bytes(&mut nonce);
-    nonce
+    return nonce
   }
 }

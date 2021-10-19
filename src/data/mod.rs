@@ -17,8 +17,8 @@ pub enum DataError {
   SerdeJsonError(#[from] serde_cbor::Error),
   #[error(transparent)]
   EncryptError(#[from] aes_gcm::aead::Error),
-  // #[error(transparent)]
-  // DecodeError(#[from] base64::DecodeError)
+  #[error("Refue plain message")]
+  RefusePlainError
 }
 
 #[derive(Serialize, Deserialize)]
@@ -88,31 +88,38 @@ impl Packet {
   }
   pub fn from_cbor(data: &Vec<u8>) -> Result<Either<Message, Event>, DataError> {
     let packet: Packet = serde_cbor::from_slice(data)?;
-    let handle_encrypt =
-      |packet: Packet, ty: bool| -> Result<Either<message::Message, Event>, DataError> {
-        let encrypt = packet.encrypt.unwrap();
+    let handle_encrypt = |packet: Packet, ty: bool| -> Result<Either<message::Message, Event>, DataError> {
+      let encrypt = packet.encrypt.unwrap();
 
-        let nonce = aes_gcm::Nonce::from_slice(&encrypt);
-        let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
-        if ty {
-          let message: Message = serde_cbor::from_slice(&plaintext)?;
-          Ok(Either::Left(message))
-        } else {
-          let event: Event = serde_cbor::from_slice(&plaintext)?;
-          Ok(Either::Right(event))
-        }
-      };
-    if packet.r#type == "message" {
-      if packet.encrypt.is_none() {
-        let message: Message = serde_cbor::from_slice(&packet.content)?;
+      let nonce = aes_gcm::Nonce::from_slice(&encrypt);
+      let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
+      if ty {
+        let message: Message = serde_cbor::from_slice(&plaintext)?;
         Ok(Either::Left(message))
+      } else {
+        let event: Event = serde_cbor::from_slice(&plaintext)?;
+        Ok(Either::Right(event))
+      }
+    };
+    if packet.r#type == "message" {
+      if packet.encrypt.is_none(){
+        if *CIPHER.enable && !*CIPHER.refuse_plain {
+          Err(DataError::RefusePlainError)
+        } else {
+          let message: Message = serde_cbor::from_slice(&packet.content)?;
+          Ok(Either::Left(message))
+        }
       } else {
         handle_encrypt(packet, true)
       }
     } else if packet.r#type == "event" {
       if packet.encrypt.is_none() {
-        let event: Event = serde_cbor::from_slice(&packet.content)?;
-        Ok(Either::Right(event))
+        if *CIPHER.enable && !*CIPHER.refuse_plain {
+          Err(DataError::RefusePlainError)
+        } else {
+          let event: Event = serde_cbor::from_slice(&packet.content)?;
+          Ok(Either::Right(event))
+        }
       } else {
         handle_encrypt(packet, false)
       }
@@ -138,7 +145,7 @@ mod test {
   };
   #[test]
   fn test() {
-    CIPHER.init(&"this is key".to_string());
+    CIPHER.init(&"this is key".to_string(),&true);
     let message = Message {
       profile: message::Profile {
         id: 1223232,
