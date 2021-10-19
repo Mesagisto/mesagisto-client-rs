@@ -16,9 +16,11 @@ impl Db {
   pub fn init(&self, db_name: Option<ArcStr>) {
     let db_name = db_name.unwrap_or(ArcStr::from("default"));
 
-    let options = sled::Config::default();
-    let image_db_path = format!("db/{}/image", db_name);
-    let image_db = options.path(image_db_path.as_str()).open().unwrap();
+    let image_db = {
+      let options = sled::Config::default();
+      let image_db_path = format!("db/{}/image", db_name);
+      options.path(image_db_path.as_str()).open().unwrap()
+    };
     self.image_db.init(image_db);
 
     self.db_name.init(db_name);

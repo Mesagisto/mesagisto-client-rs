@@ -175,11 +175,7 @@ impl Server {
                 }
               }
               if let Err(e) = handle_lib_message(next).await {
-                log::error!(
-                  "Err when invoking nats message lib handler, {} \n backtrace {}",
-                  e,
-                  e.backtrace()
-                );
+                log::error!("Err when invoking nats message lib handler, {} \n backtrace {}",e,e.backtrace());
               };
               None
             } else {
