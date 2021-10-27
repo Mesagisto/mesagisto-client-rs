@@ -16,11 +16,9 @@ impl Db {
   pub fn init(&self, db_name: Option<ArcStr>) {
     let db_name = db_name.unwrap_or(ArcStr::from("default"));
 
-    let image_db = {
-      let options = sled::Config::default();
-      let image_db_path = format!("db/{}/image", db_name);
-      options.path(image_db_path.as_str()).open().unwrap()
-    };
+    let options = sled::Config::default();
+    let image_db_path = format!("db/{}/image", db_name);
+    let image_db = options.path(image_db_path.as_str()).open().unwrap();
     self.image_db.init(image_db);
 
     self.db_name.init(db_name);
@@ -113,7 +111,61 @@ impl Db {
       false,
     )
   }
-
+  #[inline]
+  pub fn put_msg_id_3(&self, target: &u64, uid: &u64, id: &Vec<u8>) -> anyhow::Result<()> {
+    self.put_msg_id(
+      target.to_be_bytes().to_vec(),
+      uid.to_be_bytes().to_vec(),
+      id.clone(),
+      true,
+    )
+  }
+  #[inline]
+  pub fn put_msg_id_ir_3(&self, target: &u64, uid: &u64, id: &Vec<u8>) -> anyhow::Result<()> {
+    self.put_msg_id(
+      target.to_be_bytes().to_vec(),
+      uid.to_be_bytes().to_vec(),
+      id.clone(),
+      false,
+    )
+  }
+  #[inline]
+  pub fn put_msg_id_4(&self, target: &u64, uid: &u64, id: &u64) -> anyhow::Result<()> {
+    self.put_msg_id(
+      target.to_be_bytes().to_vec(),
+      uid.to_be_bytes().to_vec(),
+      id.to_be_bytes().to_vec(),
+      true,
+    )
+  }
+  // no reverse
+  #[inline]
+  pub fn put_msg_id_ir_4(&self, target: &u64, uid: &i32, id: &u64) -> anyhow::Result<()> {
+    self.put_msg_id(
+      target.to_be_bytes().to_vec(),
+      uid.to_be_bytes().to_vec(),
+      id.to_be_bytes().to_vec(),
+      false,
+    )
+  }
+  #[inline]
+  pub fn put_msg_id_5(&self, target: &u64, uid: &Vec<u8>, id: &u64) -> anyhow::Result<()> {
+    self.put_msg_id(
+      target.to_be_bytes().to_vec(),
+      uid.clone(),
+      id.to_be_bytes().to_vec(),
+      true,
+    )
+  }
+  #[inline]
+  pub fn put_msg_id_ir_5(&self, target: &u64, uid: &Vec<u8>, id: &u64) -> anyhow::Result<()> {
+    self.put_msg_id(
+      target.to_be_bytes().to_vec(),
+      uid.clone(),
+      id.to_be_bytes().to_vec(),
+      false,
+    )
+  }
   pub fn get_msg_id(&self, target: &Vec<u8>, id: &Vec<u8>) -> anyhow::Result<Option<Vec<u8>>> {
     let msg_id_db = match self.mid_db_map.get(target) {
       Some(v) => v,
@@ -139,6 +191,21 @@ impl Db {
   }
   #[inline]
   pub fn get_msg_id_2(&self, target: &i64, id: &Vec<u8>) -> anyhow::Result<Option<Vec<u8>>> {
+    self.get_msg_id(&target.to_be_bytes().to_vec(), id)
+  }
+  #[inline]
+  pub fn get_msg_id_3(&self, target: &u64, id: &Vec<u8>) -> anyhow::Result<Option<u64>> {
+    let be_bytes = match self.get_msg_id(&target.to_be_bytes().to_vec(), id)? {
+      Some(v) => match v.len() {
+        8 => v,
+        _ => return Ok(None),
+      },
+      None => return Ok(None),
+    };
+    u64::from_be_bytes(be_bytes.try_into().unwrap()).some().ok()
+  }
+  #[inline]
+  pub fn get_msg_id_4(&self, target: &u64, id: &Vec<u8>) -> anyhow::Result<Option<Vec<u8>>> {
     self.get_msg_id(&target.to_be_bytes().to_vec(), id)
   }
 }
