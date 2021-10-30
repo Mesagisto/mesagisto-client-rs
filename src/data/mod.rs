@@ -1,6 +1,7 @@
 pub mod events;
 pub mod message;
 
+use std::convert::TryFrom;
 use aes_gcm::aead::Aead;
 use either::Either;
 use serde::{Deserialize, Serialize};
@@ -43,6 +44,13 @@ pub struct EncryptInfo {
 
 impl Packet {
   pub fn from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
+    if *CIPHER.enable {
+      Self::encrypt_from(data)
+    }else {
+      Self::plain_from(data)
+    }
+  }
+  pub fn plain_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
     let ty;
     let bytes = match data {
       Either::Left(m) => {
@@ -132,7 +140,12 @@ impl Packet {
     Ok(serde_cbor::to_vec(&self)?)
   }
 }
-
+impl TryFrom<Either<message::Message, events::Event>> for Packet {
+  type Error = DataError;
+  fn try_from(value: Either<message::Message, events::Event>) -> Result<Self, Self::Error> {
+    Self::encrypt_from(value)
+  }
+}
 #[cfg(test)]
 mod test {
   use crate::EitherExt;
