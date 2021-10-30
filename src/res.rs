@@ -69,10 +69,10 @@ impl Res {
     receiver
   }
   pub async fn init(&self) {
-    let path = if cfg!(target_os = "windows") {
-      PathBuf::from("%temp%/mesagisto")
-    } else {
-      PathBuf::from("/tmp/mesagisto")
+    let path = {
+      let mut dir = std::env::temp_dir();
+      dir.push("mesagisto");
+      dir
     };
     tokio::fs::create_dir_all(path.as_path()).await.unwrap();
     self.directory.init(path);
