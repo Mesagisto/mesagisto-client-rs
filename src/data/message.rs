@@ -1,9 +1,14 @@
+use std::convert::TryInto;
+
 use arcstr::ArcStr;
 use serde::{Deserialize, Serialize};
 
+use crate::{OptionExt, ResultExt};
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Profile {
-  pub id: i64,
+  #[serde(with = "serde_bytes")]
+  pub id: Vec<u8>,
   pub username: Option<String>,
   pub nick: Option<String>,
 }
@@ -18,7 +23,23 @@ pub struct Message {
   pub reply: Option<Vec<u8>>,
   pub chain: Vec<MessageType>,
 }
-
+impl Message {
+  pub fn new(
+    profile: Profile,
+    id:i32,
+    chain: Vec<MessageType>
+  ) -> Self {
+    Message {
+      profile,
+      id: id.to_be_bytes().to_vec(),
+      reply: None,
+      chain,
+    }
+  }
+  pub fn id_i64(&self) -> Option<i64> {
+    i64::from_be_bytes(self.id.clone().try_into().ignore()?).some()
+  }
+}
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "t", content = "c")]
@@ -35,7 +56,7 @@ mod test {
   fn test() {
     let message = Message {
       profile: Profile {
-        id: 232323,
+        id: 232323i32.to_be_bytes().to_vec(),
         username: None,
         nick: None,
       },

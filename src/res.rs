@@ -1,16 +1,21 @@
 use crate::db::DB;
-use crate::LateInit;
+use crate::{LateInit, OptionExt};
 use arcstr::ArcStr;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use sled::IVec;
 use std::path::PathBuf;
 use tokio::sync::mpsc::channel;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+// U: AsRef<[u8]>,
+// F: Into<IVec>,
+
+
 type Handler =
-  dyn Fn(&(ArcStr, ArcStr)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static;
+  dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static;
 
 #[derive(Singleton, Default)]
 pub struct Res {
@@ -80,21 +85,25 @@ impl Res {
     tokio::spawn(async { RES.poll().await });
   }
 
-  pub fn store_photo_id(&self, uid: &ArcStr, file_id: &ArcStr) {
+  pub fn put_image_id<U, F>(&self, uid: U, file_id: F)
+  where
+    U: AsRef<[u8]>,
+    F: Into<IVec>,
+  {
     DB.put_image_id(uid, file_id);
   }
   pub fn resolve_photo_url<F>(&self, f: F)
   where
-    F: Fn(&(ArcStr, ArcStr)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static,
+    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static,
   {
     let h = Box::new(f);
     self.photo_url_resolver.init(h);
   }
 
-  pub async fn get_photo_url(&self, uid: &ArcStr) -> Option<ArcStr> {
-    let file_id = DB.get_image_id(uid)?;
+  pub async fn get_photo_url<T>(&self, uid: T) -> Option<ArcStr> where T: AsRef<[u8]> {
+    let file_id = DB.get_image_id(&uid)?;
     let handler = &*self.photo_url_resolver;
-    Some(handler(&(uid.clone(), file_id)).await.unwrap())
+    handler(&(uid.as_ref().to_vec(), file_id)).await.unwrap().some()
   }
 }
 

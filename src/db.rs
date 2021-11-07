@@ -1,6 +1,7 @@
 use crate::LateInit;
 use arcstr::ArcStr;
 use dashmap::DashMap;
+use sled::IVec;
 
 #[derive(Singleton, Default)]
 pub struct Db {
@@ -21,16 +22,24 @@ impl Db {
 
     self.db_name.init(db_name);
   }
-  pub fn put_image_id(&self, uid: &ArcStr, file_id: &ArcStr) {
+  pub fn put_image_id<U, F>(&self, uid: U, file_id: F)
+  where
+    U: AsRef<[u8]>,
+    F: Into<IVec>,
+  {
     self
       .image_db
-      .insert(uid.as_bytes(), file_id.as_bytes())
+      .insert(uid, file_id)
       .unwrap();
   }
-  pub fn get_image_id(&self, uid: &ArcStr) -> Option<ArcStr> {
-    let r = self.image_db.get(uid.as_bytes()).unwrap()?;
-    let file_id: ArcStr = String::from_utf8_lossy(&r).into();
-    Some(file_id)
+  pub fn get_image_id<T>(&self, uid: T) -> Option<IVec> where T: AsRef<[u8]> {
+    match self.image_db.get(uid) {
+      Ok(file_id) => file_id,
+      Err(e) => {
+        log::error!("{:?}", e);
+        None
+      },
+    }
   }
   pub fn put_msg_id(
     &self,
