@@ -17,7 +17,7 @@ pub struct Cipher {
   pub key: LateInit<Key>,
   pub origin_key: LateInit<String>,
   pub enable: LateInit<bool>,
-  pub refuse_plain: LateInit<bool>
+  pub refuse_plain: LateInit<bool>,
 }
 
 impl Deref for Cipher {
@@ -29,7 +29,7 @@ impl Deref for Cipher {
 }
 
 impl Cipher {
-  pub fn init(&self, key: &String,refuse_plain: &bool) {
+  pub fn init(&self, key: &String, refuse_plain: &bool) {
     self.enable.init(true);
     self.refuse_plain.init(refuse_plain.clone());
 
@@ -57,6 +57,6 @@ impl Cipher {
     let mut rng = rand::thread_rng();
     let mut nonce = [0u8; 12];
     rng.fill_bytes(&mut nonce);
-    return nonce
+    return nonce;
   }
 }

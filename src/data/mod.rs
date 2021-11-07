@@ -1,10 +1,10 @@
 pub mod events;
 pub mod message;
 
-use std::convert::TryFrom;
 use aes_gcm::aead::Aead;
 use either::Either;
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 use thiserror::Error;
 
 use crate::{cipher::CIPHER, OkExt};
@@ -19,7 +19,7 @@ pub enum DataError {
   #[error(transparent)]
   EncryptError(#[from] aes_gcm::aead::Error),
   #[error("Refue plain message")]
-  RefusePlainError
+  RefusePlainError,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -46,7 +46,7 @@ impl Packet {
   pub fn from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
     if *CIPHER.enable {
       Self::encrypt_from(data)
-    }else {
+    } else {
       Self::plain_from(data)
     }
   }
@@ -96,21 +96,22 @@ impl Packet {
   }
   pub fn from_cbor(data: &Vec<u8>) -> Result<Either<Message, Event>, DataError> {
     let packet: Packet = serde_cbor::from_slice(data)?;
-    let handle_encrypt = |packet: Packet, ty: bool| -> Result<Either<message::Message, Event>, DataError> {
-      let encrypt = packet.encrypt.unwrap();
+    let handle_encrypt =
+      |packet: Packet, ty: bool| -> Result<Either<message::Message, Event>, DataError> {
+        let encrypt = packet.encrypt.unwrap();
 
-      let nonce = aes_gcm::Nonce::from_slice(&encrypt);
-      let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
-      if ty {
-        let message: Message = serde_cbor::from_slice(&plaintext)?;
-        Ok(Either::Left(message))
-      } else {
-        let event: Event = serde_cbor::from_slice(&plaintext)?;
-        Ok(Either::Right(event))
-      }
-    };
+        let nonce = aes_gcm::Nonce::from_slice(&encrypt);
+        let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
+        if ty {
+          let message: Message = serde_cbor::from_slice(&plaintext)?;
+          Ok(Either::Left(message))
+        } else {
+          let event: Event = serde_cbor::from_slice(&plaintext)?;
+          Ok(Either::Right(event))
+        }
+      };
     if packet.r#type == "message" {
-      if packet.encrypt.is_none(){
+      if packet.encrypt.is_none() {
         if *CIPHER.enable && !*CIPHER.refuse_plain {
           Err(DataError::RefusePlainError)
         } else {
@@ -158,10 +159,10 @@ mod test {
   };
   #[test]
   fn test() {
-    CIPHER.init(&"this is key".to_string(),&true);
+    CIPHER.init(&"this is key".to_string(), &true);
     let message = Message {
       profile: message::Profile {
-        id: 1223232,
+        id: 1223232i64.to_be_bytes().to_vec(),
         username: None,
         nick: None,
       },
