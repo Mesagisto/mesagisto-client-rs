@@ -64,7 +64,7 @@ impl Cache {
     log::trace!("TmpFile dont exist,requesting image url");
     let packet: Event = EventType::RequestImage { id: uid.clone() }.into();
     // fixme error handling
-    let packet = Packet::encrypt_from(packet.to_right())?;
+    let packet = Packet::from(packet.to_right())?;
     // fixme timeout check
     let response = SERVER.request(address, packet, Some(&*SERVER.lib_header));
     let response = tokio::time::timeout(Duration::from_secs(5), response).await??;

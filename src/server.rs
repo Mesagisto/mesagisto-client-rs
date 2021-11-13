@@ -73,7 +73,7 @@ impl Server {
     entry
       .or_insert_with(|| {
         let mut hasher = Sha256::new();
-        hasher.update(format!("{}{}", address, *CIPHER.origin_key));
+        hasher.update(CIPHER.unique_address(address));
         let hash_key = hasher.finalize();
         format!("compat.{}", base64_url::encode(&hash_key)).into()
       })
@@ -167,7 +167,7 @@ impl Server {
                       }
                     };
                     let event: Event = EventType::RespondImage { id, url }.into();
-                    let packet = Packet::encrypt_from(event.to_right())?.to_cbor()?;
+                    let packet = Packet::from(event.to_right())?.to_cbor()?;
                     next.respond(packet).await.unwrap();
                     Ok(())
                   }

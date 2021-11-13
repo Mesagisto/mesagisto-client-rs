@@ -50,7 +50,7 @@ impl Packet {
       Self::plain_from(data)
     }
   }
-  pub fn plain_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
+  fn plain_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
     let ty;
     let bytes = match data {
       Either::Left(m) => {
@@ -70,7 +70,7 @@ impl Packet {
     }
     .ok()
   }
-  pub fn encrypt_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
+  fn encrypt_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
     let bytes_nonce = CIPHER.new_nonce();
     let nonce = aes_gcm::Nonce::from_slice(&bytes_nonce);
 
