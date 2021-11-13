@@ -58,6 +58,20 @@ pub trait RunExt<R> {
 
 impl<T, R> RunExt<R> for T {}
 
+pub trait ResultExt<T,E> {
+  fn ignore(self) -> Option<T>;
+}
+impl<T, E> ResultExt<T,E> for Result<T,E> {
+  #[inline]
+  fn ignore(self) -> Option<T> {
+    match self {
+      Ok(v) => Some(v),
+      Err(_) => None,
+    }
+  }
+}
+
+
 pub trait OkExt<E> {
   #[inline]
   fn ok(self) -> Result<Self, E>
