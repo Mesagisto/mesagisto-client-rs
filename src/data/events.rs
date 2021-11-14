@@ -21,6 +21,13 @@ impl From<EventType> for Event {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "t", content = "c")]
 pub enum EventType {
-  RequestImage { id: ArcStr },
-  RespondImage { id: ArcStr, url: ArcStr },
+  RequestImage {
+    #[serde(with = "serde_bytes")]
+    id: Vec<u8>
+  },
+  RespondImage {
+    #[serde(with = "serde_bytes")]
+    id: Vec<u8>,
+    url: ArcStr
+  },
 }

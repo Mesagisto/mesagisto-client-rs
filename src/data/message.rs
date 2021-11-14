@@ -45,7 +45,11 @@ impl Message {
 #[serde(tag = "t", content = "c")]
 pub enum MessageType {
   Text { content: String },
-  Image { id: ArcStr, url: Option<ArcStr> },
+  Image {
+    #[serde(with = "serde_bytes")]
+    id: Vec<u8>,
+    url: Option<ArcStr>
+  },
 }
 
 #[cfg(test)]
@@ -69,7 +73,7 @@ mod test {
           content: "this is text".to_string(),
         },
         MessageType::Image {
-          id: ArcStr::from("23232"),
+          id: Vec::from("id"),
           url: None,
         },
       ],
