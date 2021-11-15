@@ -159,7 +159,7 @@ mod test {
   };
   #[test]
   fn test() {
-    CIPHER.init(&"this is key".to_string(), &true);
+    CIPHER.init(&"this is key".to_string().into(), &true);
     let message = Message {
       profile: message::Profile {
         id: 1223232i64.to_be_bytes().to_vec(),

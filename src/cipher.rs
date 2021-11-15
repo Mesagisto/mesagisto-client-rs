@@ -16,7 +16,7 @@ type Key = GenericArray<u8, <sha2::Sha256 as sha2::Digest>::OutputSize>;
 pub struct Cipher {
   inner: LateInit<AesGcm<Aes256, U12>>,
   key: LateInit<Key>,
-  origin_key: LateInit<String>,
+  origin_key: LateInit<ArcStr>,
   pub enable: LateInit<bool>,
   pub refuse_plain: LateInit<bool>,
 }
@@ -30,7 +30,7 @@ impl Deref for Cipher {
 }
 
 impl Cipher {
-  pub fn init(&self, key: &String, refuse_plain: &bool) {
+  pub fn init(&self, key: &ArcStr, refuse_plain: &bool) {
     self.enable.init(true);
     self.refuse_plain.init(refuse_plain.clone());
 

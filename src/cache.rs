@@ -7,7 +7,7 @@ use crate::data::Packet;
 use crate::net::NET;
 use crate::res::RES;
 use crate::server::SERVER;
-use crate::{EitherExt, LateInit};
+use crate::EitherExt;
 use arcstr::ArcStr;
 use thiserror::Error;
 

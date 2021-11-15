@@ -1,15 +1,15 @@
 #![feature(fn_traits)]
 use arcstr::ArcStr;
-use educe::Educe;
-use futures::future::BoxFuture;
-use once_cell::sync::OnceCell;
-use sled::IVec;
-use db::DB;
 use cache::CACHE;
 use cipher::CIPHER;
+use db::DB;
+use educe::Educe;
+use futures::future::BoxFuture;
+use net::NET;
+use once_cell::sync::OnceCell;
 use res::RES;
 use server::SERVER;
-use net::NET;
+use sled::IVec;
 
 pub mod cache;
 pub mod cipher;
@@ -54,7 +54,9 @@ impl MesagistoConfig {
     }
 
     RES.init().await;
-    RES.photo_url_resolver.init(self.photo_url_resolver.unwrap());
+    RES
+      .photo_url_resolver
+      .init(self.photo_url_resolver.unwrap());
     SERVER.init(&self.nats_address).await;
     NET.init(self.proxy);
   }
@@ -91,10 +93,10 @@ impl MesagistoConfigBuilder {
     self.config.nats_address = address.into();
     self
   }
-  pub fn photo_url_resolver<F>(
-    mut self,
-    resolver: F,
-  ) -> Self  where F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static {
+  pub fn photo_url_resolver<F>(mut self, resolver: F) -> Self
+  where
+    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static,
+  {
     let h = Box::new(resolver);
     self.config.photo_url_resolver = Some(h);
     self

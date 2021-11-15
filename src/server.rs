@@ -19,7 +19,7 @@ pub enum ServerError {
 #[derive(Singleton, Default)]
 pub struct Server {
   pub nc: LateInit<Connection>,
-  pub address: LateInit<String>,
+  pub address: LateInit<ArcStr>,
   pub cid: LateInit<String>,
   pub nats_header: LateInit<Headers>,
   pub lib_header: LateInit<Headers>,
@@ -27,7 +27,7 @@ pub struct Server {
   pub compat_address: DashMap<ArcStr, ArcStr>,
 }
 impl Server {
-  pub async fn init(&self, address: &String) {
+  pub async fn init(&self, address: &ArcStr) {
     self.address.init(address.to_owned());
     let nc = {
       let opts = nats::asynk::Options::new();
