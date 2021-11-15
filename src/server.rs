@@ -23,7 +23,7 @@ pub struct Server {
   pub cid: LateInit<String>,
   pub nats_header: LateInit<Headers>,
   pub lib_header: LateInit<Headers>,
-  pub endpoint: DashMap<i64, bool>,
+  pub endpoint: DashMap<Vec<u8>, bool>,
   pub compat_address: DashMap<ArcStr, ArcStr>,
 }
 impl Server {
@@ -82,13 +82,13 @@ impl Server {
   //fixme: not a correct api
   pub async fn send_and_receive<H, Fut>(
     &self,
-    target: i64,
+    target: Vec<u8>,
     address: ArcStr,
     content: Packet,
     handler: H,
   ) -> Result<(), ServerError>
   where
-    H: Fn(nats::asynk::Message, i64) -> Fut + Send + Sync + 'static,
+    H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
   {
     let compat_address = self.compat_address(&address);
@@ -111,15 +111,15 @@ impl Server {
 
   pub async fn try_create_endpoint<H, Fut>(
     &self,
-    target: i64,
+    target: Vec<u8>,
     address: ArcStr,
     handler: H,
   ) -> Result<(), ServerError>
   where
-    H: Fn(nats::asynk::Message, i64) -> Fut + Send + Sync + 'static,
+    H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
   {
-    log::debug!("Trying to create sub for {}", target);
+    log::debug!("Trying to create sub for {}", base64_url::encode(&target));
     if self.endpoint.contains_key(&target) {
       return Ok(());
     }
@@ -128,18 +128,18 @@ impl Server {
     log::debug!(
       "Creating sub on {} for {} with compatibility",
       address,
-      target
+      base64_url::encode(&target)
     );
     let sub = self.nc.subscribe(address.as_str()).await?;
     // the task spawned below should use singleton,because it's "outside" of our logic
     tokio::spawn(async move {
       async fn handle_incoming<H, Fut>(
         sub: &nats::asynk::Subscription,
-        target: i64,
+        target: Vec<u8>,
         handler: &H,
       ) -> Option<()>
       where
-        H: Fn(nats::asynk::Message, i64) -> Fut + Send + Sync + 'static,
+        H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
       {
         let next: Option<nats::asynk::Message> = {
@@ -188,7 +188,7 @@ impl Server {
           }
         };
         if let Some(next) = next {
-          log::trace!("Received message of target {}", target);
+          log::trace!("Received message of target {}", base64_url::encode(&target));
           if let Err(e) = handler(next, target).await {
             log::error!(
               "Err when invoking nats message handler, {} \n backtrace {}",
@@ -200,7 +200,7 @@ impl Server {
         None
       }
       loop {
-        handle_incoming(&sub, target, &handler).await;
+        handle_incoming(&sub, target.clone(), &handler).await;
       }
     });
     Ok(())
