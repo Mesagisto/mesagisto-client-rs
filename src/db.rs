@@ -27,18 +27,18 @@ impl Db {
     U: AsRef<[u8]>,
     F: Into<IVec>,
   {
-    self
-      .image_db
-      .insert(uid, file_id)
-      .unwrap();
+    self.image_db.insert(uid, file_id).unwrap();
   }
-  pub fn get_image_id<T>(&self, uid: T) -> Option<IVec> where T: AsRef<[u8]> {
+  pub fn get_image_id<T>(&self, uid: T) -> Option<IVec>
+  where
+    T: AsRef<[u8]>,
+  {
     match self.image_db.get(uid) {
       Ok(file_id) => file_id,
       Err(e) => {
         log::error!("{:?}", e);
         None
-      },
+      }
     }
   }
   pub fn put_msg_id(

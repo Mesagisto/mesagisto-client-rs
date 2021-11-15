@@ -24,11 +24,7 @@ pub struct Message {
   pub chain: Vec<MessageType>,
 }
 impl Message {
-  pub fn new(
-    profile: Profile,
-    id:i32,
-    chain: Vec<MessageType>
-  ) -> Self {
+  pub fn new(profile: Profile, id: i32, chain: Vec<MessageType>) -> Self {
     Message {
       profile,
       id: id.to_be_bytes().to_vec(),
@@ -44,18 +40,19 @@ impl Message {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "t", content = "c")]
 pub enum MessageType {
-  Text { content: String },
+  Text {
+    content: String,
+  },
   Image {
     #[serde(with = "serde_bytes")]
     id: Vec<u8>,
-    url: Option<ArcStr>
+    url: Option<ArcStr>,
   },
 }
 
 #[cfg(test)]
 mod test {
   use crate::data::message::{Message, MessageType, Profile};
-  use arcstr::ArcStr;
   #[test]
   fn test() {
     let message = Message {

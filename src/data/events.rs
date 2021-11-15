@@ -23,11 +23,11 @@ impl From<EventType> for Event {
 pub enum EventType {
   RequestImage {
     #[serde(with = "serde_bytes")]
-    id: Vec<u8>
+    id: Vec<u8>,
   },
   RespondImage {
     #[serde(with = "serde_bytes")]
     id: Vec<u8>,
-    url: ArcStr
+    url: ArcStr,
   },
 }

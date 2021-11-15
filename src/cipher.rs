@@ -53,7 +53,7 @@ impl Cipher {
   pub fn deinit(&self) {
     self.enable.init(false);
   }
-  pub fn unique_address(&self,address: &ArcStr) -> ArcStr {
+  pub fn unique_address(&self, address: &ArcStr) -> ArcStr {
     if *CIPHER.enable {
       format!("{}{}", address, *CIPHER.origin_key).into()
     } else {

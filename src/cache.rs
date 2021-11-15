@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use crate::data::events::{Event, EventType};
 use crate::data::Packet;
-use crate::res::RES;
 use crate::net::NET;
+use crate::res::RES;
 use crate::server::SERVER;
 use crate::{EitherExt, LateInit};
 use arcstr::ArcStr;
@@ -30,10 +30,10 @@ pub enum CacheError {
 }
 
 #[derive(Singleton, Default)]
-pub struct Cache { }
+pub struct Cache {}
 
 impl Cache {
-  pub fn init(&self) { }
+  pub fn init(&self) {}
 
   pub async fn file(
     &self,
@@ -48,7 +48,7 @@ impl Cache {
   }
 
   pub async fn file_by_uid(&self, uid: &Vec<u8>, address: &ArcStr) -> Result<PathBuf, CacheError> {
-    let uid_str:ArcStr = base64_url::encode(uid).into();
+    let uid_str: ArcStr = base64_url::encode(uid).into();
     log::trace!("Caching file by uid {}", uid_str);
     let path = RES.path(&uid_str);
     if path.exists() {
@@ -78,7 +78,7 @@ impl Cache {
     }
   }
   pub async fn file_by_url(&self, id: &Vec<u8>, url: &ArcStr) -> Result<PathBuf, CacheError> {
-    let id_str:ArcStr = base64_url::encode(id).into();
+    let id_str: ArcStr = base64_url::encode(id).into();
     let path = RES.path(&id_str);
     if path.exists() {
       return Ok(path);
@@ -98,7 +98,7 @@ impl Cache {
   }
 
   pub async fn put_file(&self, id: &Vec<u8>, file: &PathBuf) -> Result<PathBuf, CacheError> {
-    let id_str:ArcStr = base64_url::encode(id).into();
+    let id_str: ArcStr = base64_url::encode(id).into();
     let path = RES.path(&id_str);
     tokio::fs::rename(&file, &path).await?;
     Ok(path)

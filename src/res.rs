@@ -13,7 +13,6 @@ use uuid::Uuid;
 // U: AsRef<[u8]>,
 // F: Into<IVec>,
 
-
 type Handler =
   dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static;
 
@@ -100,10 +99,16 @@ impl Res {
     self.photo_url_resolver.init(h);
   }
 
-  pub async fn get_photo_url<T>(&self, uid: T) -> Option<ArcStr> where T: AsRef<[u8]> {
+  pub async fn get_photo_url<T>(&self, uid: T) -> Option<ArcStr>
+  where
+    T: AsRef<[u8]>,
+  {
     let file_id = DB.get_image_id(&uid)?;
     let handler = &*self.photo_url_resolver;
-    handler(&(uid.as_ref().to_vec(), file_id)).await.unwrap().some()
+    handler(&(uid.as_ref().to_vec(), file_id))
+      .await
+      .unwrap()
+      .some()
   }
 }
 
