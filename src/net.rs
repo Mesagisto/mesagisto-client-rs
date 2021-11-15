@@ -1,7 +1,11 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
+use arcstr::ArcStr;
+use futures::FutureExt;
+use tokio::io::AsyncWriteExt;
 
-// fixme add proxy
-pub fn new_reqwest_client() -> reqwest::Client {
+use crate::LateInit;
+
+pub fn new_reqwest_builder() -> reqwest::ClientBuilder {
   use reqwest::header::{HeaderMap, CONNECTION};
 
   let mut headers = HeaderMap::new();
@@ -16,6 +20,34 @@ pub fn new_reqwest_client() -> reqwest::Client {
     .tcp_nodelay(true)
     .default_headers(headers)
     .use_rustls_tls()
-    .build()
-    .unwrap()
+}
+
+
+#[derive(Singleton, Default)]
+pub struct Net {
+  inner: LateInit<reqwest::Client>,
+}
+impl Net {
+  pub fn init(&self,proxy: Option<ArcStr>) {
+    let builder = new_reqwest_builder();
+    let builder = if let Some(proxy) = proxy {
+      builder.proxy(reqwest::Proxy::all(proxy.as_str()).expect("reqwest::Proxy create failed"))
+    } else {
+      builder
+    };
+    self.inner.init(builder.build().expect("reqwest::Client create failed"));
+  }
+  pub async fn download(&self, url: &ArcStr, dst: &PathBuf) -> anyhow::Result<()>{
+    let mut dst_file = tokio::fs::File::create(&dst).await?;
+    self.inner
+      .get(url.as_str())
+      .send()
+      .then(move |r| async move {
+        let mut res = r?.error_for_status()?;
+        while let Some(chunk) = res.chunk().await? {
+          dst_file.write_all(&chunk).await?;
+        }
+        Ok(())
+      }).await
+  }
 }

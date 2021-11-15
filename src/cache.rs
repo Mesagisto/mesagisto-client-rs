@@ -5,10 +5,10 @@ use std::time::Duration;
 use crate::data::events::{Event, EventType};
 use crate::data::Packet;
 use crate::res::RES;
+use crate::net::NET;
 use crate::server::SERVER;
 use crate::{EitherExt, LateInit};
 use arcstr::ArcStr;
-use reqwest::{Method, Request, Url};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -25,17 +25,15 @@ pub enum CacheError {
   TimeoutError(#[from] tokio::time::error::Elapsed),
   #[error(transparent)]
   HttpError(#[from] reqwest::Error),
+  #[error(transparent)]
+  AnyhowError(#[from] anyhow::Error),
 }
 
 #[derive(Singleton, Default)]
-pub struct Cache {
-  pub client: LateInit<reqwest::Client>,
-}
+pub struct Cache { }
 
 impl Cache {
-  pub fn init(&self) {
-    self.client.init(crate::net::new_reqwest_client())
-  }
+  pub fn init(&self) { }
 
   pub async fn file(
     &self,
@@ -92,13 +90,8 @@ impl Cache {
       let path = tokio::time::timeout(std::time::Duration::from_secs(5), fut).await??;
       Ok(path)
     } else {
-      // fixme use stream
-      let bytes = {
-        let req = Request::new(Method::GET, Url::parse(url.as_str()).unwrap());
-        self.client.execute(req).await?.bytes().await?.to_vec()
-        // self.client.execute(req).await?.bytes_stream().await?.to_vec()
-      };
-      tokio::fs::write(&tmp_path, bytes).await?;
+      // fixme error handling
+      NET.download(url, &tmp_path).await?;
       tokio::fs::rename(&tmp_path, &path).await?;
       Ok(path)
     };
