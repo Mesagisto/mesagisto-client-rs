@@ -119,16 +119,15 @@ impl Server {
     H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
   {
-    log::debug!("Trying to create sub for {}", base64_url::encode(&target));
     if self.endpoint.contains_key(&target) {
       return Ok(());
     }
     self.endpoint.insert(target.clone(), true);
 
-    log::debug!(
-      "Creating sub on {} for {} with compatibility",
+    log::info!(
+      "正在为{}创建向下兼容订阅，订阅地址为{}",
+      base64_url::encode(&target),
       address,
-      base64_url::encode(&target)
     );
     let sub = self.nc.subscribe(address.as_str()).await?;
     // the task spawned below should use singleton,because it's "outside" of our logic
@@ -150,7 +149,7 @@ impl Server {
           } else {
             if meta.contains("lib") {
               async fn handle_lib_message(next: nats::asynk::Message) -> anyhow::Result<()> {
-                log::debug!("Handling message sent by lib");
+                log::debug!("正在处理程序库发送的消息...");
                 let packet = Packet::from_cbor(&next.data)?;
                 if packet.is_left() {
                   return Ok(());
@@ -162,7 +161,7 @@ impl Server {
                     let url = match RES.get_photo_url(&id).await {
                       Some(s) => s,
                       None => {
-                        log::info!("No image in db");
+                        log::debug!("未在本地数据库中找到图片");
                         return Ok(());
                       }
                     };
@@ -213,7 +212,7 @@ impl Server {
     headers: Option<&Headers>,
   ) -> Result<nats::asynk::Message, ServerError> {
     let address = self.compat_address(address);
-    log::trace!("Requesting on {}", address);
+    log::trace!("正在向频道{}请求图片资源", address);
     let inbox = self.nc.new_inbox();
     let sub = self.nc.subscribe(&inbox).await?;
     self
