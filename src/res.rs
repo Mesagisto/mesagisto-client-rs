@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use futures::future::BoxFuture;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
+use tracing::error;
 use std::path::PathBuf;
 use tokio::sync::mpsc::channel;
 use tokio::sync::oneshot;
@@ -47,7 +48,7 @@ impl Res {
           }
           // log::trace!("changed: {:?}", event)
         }
-        Err(e) => log::error!("watch error: {:?}", e),
+        Err(e) => error!("watch error: {:?}", e),
       }
     }
     Ok(())

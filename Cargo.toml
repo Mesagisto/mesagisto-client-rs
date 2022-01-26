@@ -8,7 +8,7 @@ edition = "2018"
 
 once_cell = "1.8"
 smol = "1.2"
-log = "0.4"
+tracing = "0.1.29"
 aes-gcm = {version = "0.9",features = ["std"] }
 
 dashmap = { version = "4.0" , features = ["serde"] }

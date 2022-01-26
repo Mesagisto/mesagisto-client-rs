@@ -30,13 +30,13 @@ impl Net {
   pub fn init(&self, proxy: Option<ArcStr>) {
     let builder = new_reqwest_builder();
     let builder = if let Some(proxy) = proxy {
-      builder.proxy(reqwest::Proxy::all(proxy.as_str()).expect("reqwest代理创建失败"))
+      builder.proxy(reqwest::Proxy::all(proxy.as_str()).expect("reqwest::Proxy create failed"))
     } else {
       builder
     };
     self
       .inner
-      .init(builder.build().expect("reqwest客户端创建失败"));
+      .init(builder.build().expect("reqwest::Client create failed"));
   }
   pub async fn download(&self, url: &ArcStr, dst: &PathBuf) -> anyhow::Result<()> {
     let mut dst_file = tokio::fs::File::create(&dst).await?;

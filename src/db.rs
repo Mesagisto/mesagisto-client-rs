@@ -2,6 +2,7 @@ use crate::LateInit;
 use arcstr::ArcStr;
 use dashmap::DashMap;
 use sled::IVec;
+use tracing::error;
 
 #[derive(Singleton, Default)]
 pub struct Db {
@@ -36,7 +37,7 @@ impl Db {
     match self.image_db.get(uid) {
       Ok(file_id) => file_id,
       Err(e) => {
-        log::error!("{:?}", e);
+        error!("{:?}", e);
         None
       }
     }

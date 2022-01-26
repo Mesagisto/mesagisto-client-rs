@@ -10,6 +10,7 @@ use crate::server::SERVER;
 use crate::EitherExt;
 use arcstr::ArcStr;
 use thiserror::Error;
+use tracing::trace;
 
 #[derive(Error, Debug)]
 pub enum CacheError {
@@ -49,25 +50,25 @@ impl Cache {
 
   pub async fn file_by_uid(&self, uid: &Vec<u8>, address: &ArcStr) -> Result<PathBuf, CacheError> {
     let uid_str: ArcStr = base64_url::encode(uid).into();
-    log::trace!("Caching file by uid {}", uid_str);
+    trace!("Caching file by uid {}", uid_str);
     let path = RES.path(&uid_str);
     if path.exists() {
-      log::trace!("File exists,return the path");
+      trace!("File exists,return the path");
       return Ok(path);
     }
     let tmp_path = RES.tmp_path(&uid_str);
     if tmp_path.exists() {
-      log::trace!("TmpFile exists,waiting for the file downloading");
+      trace!("TmpFile exists,waiting for the file downloading");
       return Ok(RES.wait_for(&uid_str).await?);
     }
-    log::trace!("TmpFile dont exist,requesting image url");
+    trace!("TmpFile dont exist,requesting image url");
     let packet: Event = EventType::RequestImage { id: uid.clone() }.into();
     // fixme error handling
     let packet = Packet::from(packet.to_right())?;
     // fixme timeout check
     let response = SERVER.request(address, packet, Some(&*SERVER.lib_header));
     let response = tokio::time::timeout(Duration::from_secs(5), response).await??;
-    log::trace!("Get the image respond");
+    trace!("Get the image respond");
     let r_packet = Packet::from_cbor(&response.data)?;
     match r_packet {
       either::Either::Right(event) => match event.data {

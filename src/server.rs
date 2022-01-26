@@ -5,6 +5,7 @@ use crate::{EitherExt, LateInit};
 use arcstr::ArcStr;
 use dashmap::DashMap;
 use nats::{asynk::Connection, Headers};
+use tracing::{trace, error, debug, info};
 use std::fmt::Debug;
 use std::future::Future;
 
@@ -31,13 +32,13 @@ impl Server {
     self.address.init(address.to_owned());
     let nc = {
       let opts = nats::asynk::Options::new();
-      log::info!("Connecting to nats server");
+      info!("Connecting to nats server");
       let nc = opts
         .with_name("telegram client")
         .connect(&self.address)
         .await
         .expect("Failed to connect nats server");
-      log::info!("Connected sucessfully");
+      info!("Connected sucessfully");
       nc
     };
     self.nc.init(nc);
@@ -119,15 +120,16 @@ impl Server {
     H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
   {
+    debug!("Trying to create sub for {}", base64_url::encode(&target));
     if self.endpoint.contains_key(&target) {
       return Ok(());
     }
     self.endpoint.insert(target.clone(), true);
 
-    log::info!(
-      "正在为{}创建向下兼容订阅，订阅地址为{}",
-      base64_url::encode(&target),
+    debug!(
+      "Creating sub on {} for {} with compatibility",
       address,
+      base64_url::encode(&target)
     );
     let sub = self.nc.subscribe(address.as_str()).await?;
     // the task spawned below should use singleton,because it's "outside" of our logic
@@ -149,7 +151,7 @@ impl Server {
           } else {
             if meta.contains("lib") {
               async fn handle_lib_message(next: nats::asynk::Message) -> anyhow::Result<()> {
-                log::debug!("正在处理程序库发送的消息...");
+                debug!("Handling message sent by lib");
                 let packet = Packet::from_cbor(&next.data)?;
                 if packet.is_left() {
                   return Ok(());
@@ -161,7 +163,7 @@ impl Server {
                     let url = match RES.get_photo_url(&id).await {
                       Some(s) => s,
                       None => {
-                        log::debug!("未在本地数据库中找到图片");
+                        info!("No image in db");
                         return Ok(());
                       }
                     };
@@ -174,7 +176,7 @@ impl Server {
                 }
               }
               if let Err(e) = handle_lib_message(next).await {
-                log::error!(
+                error!(
                   "Err when invoking nats message lib handler, {} \n backtrace {}",
                   e,
                   e.backtrace()
@@ -187,9 +189,9 @@ impl Server {
           }
         };
         if let Some(next) = next {
-          log::trace!("Received message of target {}", base64_url::encode(&target));
+          trace!("Received message of target {}", base64_url::encode(&target));
           if let Err(e) = handler(next, target).await {
-            log::error!(
+            error!(
               "Err when invoking nats message handler, {} \n backtrace {}",
               e,
               e.backtrace()
@@ -212,7 +214,7 @@ impl Server {
     headers: Option<&Headers>,
   ) -> Result<nats::asynk::Message, ServerError> {
     let address = self.compat_address(address);
-    log::trace!("正在向频道{}请求图片资源", address);
+    trace!("Requesting on {}", address);
     let inbox = self.nc.new_inbox();
     let sub = self.nc.subscribe(&inbox).await?;
     self
