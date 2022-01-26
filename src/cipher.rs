@@ -4,14 +4,14 @@ use crate::LateInit;
 use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AesGcm};
 use arcstr::ArcStr;
 use thiserror::Error;
-use typenum::U12;
+use typenum::{U12, UTerm, UInt, B0, B1};
 
 #[derive(Error, Debug)]
 pub enum CipherError {
   #[error(transparent)]
   EncryptError(#[from] aes_gcm::aead::Error),
 }
-type Key = GenericArray<u8, <sha2::Sha256 as sha2::Digest>::OutputSize>;
+type Key = GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, B0>, B0>, B0>>;
 #[derive(Singleton, Default)]
 pub struct Cipher {
   inner: LateInit<AesGcm<Aes256, U12>>,
