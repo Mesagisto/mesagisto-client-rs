@@ -35,7 +35,7 @@ anyhow = {version = "1.0.44", features=["backtrace"]}
 notify = "5.0.0-pre.12"
 # async
 hex = "0.4"
-nats = "0.16.0"
+nats = "0.17.0"
 singleton = { git = "https://github.com/Itsusinn/singleton-rs.git", rev = "bee321c" }
 uuid = { version = "0.8", features = ["serde", "v4"] }
 reqwest = { version = "0.11" ,default-features = false ,features = ["rustls","socks","rustls-tls-webpki-roots"] }

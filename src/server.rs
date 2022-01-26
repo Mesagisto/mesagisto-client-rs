@@ -4,7 +4,8 @@ use crate::data::Packet;
 use crate::{EitherExt, LateInit};
 use arcstr::ArcStr;
 use dashmap::DashMap;
-use nats::{asynk::Connection, Headers};
+use nats::header::HeaderMap;
+use nats::asynk::Connection;
 use tracing::{trace, error, debug, info};
 use std::fmt::Debug;
 use std::future::Future;
@@ -22,8 +23,8 @@ pub struct Server {
   pub nc: LateInit<Connection>,
   pub address: LateInit<ArcStr>,
   pub cid: LateInit<String>,
-  pub nats_header: LateInit<Headers>,
-  pub lib_header: LateInit<Headers>,
+  pub nats_header: LateInit<HeaderMap>,
+  pub lib_header: LateInit<HeaderMap>,
   pub endpoint: DashMap<Vec<u8>, bool>,
   pub compat_address: DashMap<ArcStr, ArcStr>,
 }
@@ -35,7 +36,7 @@ impl Server {
       info!("Connecting to nats server");
       let nc = opts
         .with_name("telegram client")
-        .connect(&self.address)
+        .connect(&*self.address.as_str())
         .await
         .expect("Failed to connect nats server");
       info!("Connected sucessfully");
@@ -51,7 +52,7 @@ impl Server {
         .entry("meta".to_string())
         .or_insert_with(HashSet::default);
       entry.insert(format!("cid={}", *self.cid));
-      Headers { inner }
+      HeaderMap { inner }
     };
     self.nats_header.init(header);
     let header = {
@@ -63,7 +64,7 @@ impl Server {
         .or_insert_with(HashSet::default);
       entry.insert(format!("cid={}", *self.cid));
       entry.insert("lib".to_string());
-      Headers { inner }
+      HeaderMap { inner }
     };
     self.lib_header.init(header);
   }
@@ -211,7 +212,7 @@ impl Server {
     &self,
     address: &ArcStr,
     content: Packet,
-    headers: Option<&Headers>,
+    headers: Option<&HeaderMap>,
   ) -> Result<nats::asynk::Message, ServerError> {
     let address = self.compat_address(address);
     trace!("Requesting on {}", address);
