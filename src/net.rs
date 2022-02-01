@@ -36,7 +36,7 @@ impl Net {
     };
     self
       .inner
-      .init(builder.build().expect("reqwest::Client create failed"));
+      .init(builder.gzip(true).build().expect("reqwest::Client create failed"));
   }
   pub async fn download(&self, url: &ArcStr, dst: &PathBuf) -> anyhow::Result<()> {
     let mut dst_file = tokio::fs::File::create(&dst).await?;
