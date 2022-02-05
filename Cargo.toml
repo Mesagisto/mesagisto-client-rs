@@ -11,7 +11,7 @@ smol = "1.2"
 tracing = "0.1.29"
 aes-gcm = {version = "0.9",features = ["std"] }
 
-dashmap = { version = "5.0.0" , features = ["serde"] }
+dashmap = { version = "4.0.2" , features = ["serde"] }
 rand = "0.8"
 
 futures = "0.3.17"
