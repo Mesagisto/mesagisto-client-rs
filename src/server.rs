@@ -45,26 +45,16 @@ impl Server {
     self.nc.init(nc);
     self.cid.init(self.nc.client_id().to_string());
     let header = {
-      use std::collections::HashMap;
-      use std::collections::HashSet;
-      let mut inner = HashMap::default();
-      let entry = inner
-        .entry("meta".to_string())
-        .or_insert_with(HashSet::default);
-      entry.insert(format!("cid={}", *self.cid));
-      HeaderMap { inner }
+      let mut header = HeaderMap::new();
+      header.append("meta".to_string(),format!("cid={}", *self.cid));
+      header
     };
     self.nats_header.init(header);
     let header = {
-      use std::collections::HashMap;
-      use std::collections::HashSet;
-      let mut inner = HashMap::default();
-      let entry = inner
-        .entry("meta".to_string())
-        .or_insert_with(HashSet::default);
-      entry.insert(format!("cid={}", *self.cid));
-      entry.insert("lib".to_string());
-      HeaderMap { inner }
+      let mut header = HeaderMap::new();
+      header.append("meta".to_string(),format!("cid={}", *self.cid));
+      header.append("meta".to_string(), "lib".to_string());
+      header
     };
     self.lib_header.init(header);
   }
