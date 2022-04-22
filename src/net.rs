@@ -1,16 +1,11 @@
 use arcstr::ArcStr;
 use futures::FutureExt;
-use tracing::info;
 use std::{path::PathBuf, time::Duration};
 use tokio::io::AsyncWriteExt;
 
 use crate::LateInit;
 
 pub fn new_reqwest_builder() -> reqwest::ClientBuilder {
-  use reqwest::header::{HeaderMap, CONNECTION};
-
-  let mut headers = HeaderMap::new();
-  headers.insert(CONNECTION, "keep-alive".parse().unwrap());
 
   let connect_timeout = Duration::from_secs(5);
   let timeout = connect_timeout + Duration::from_secs(12);
@@ -19,7 +14,6 @@ pub fn new_reqwest_builder() -> reqwest::ClientBuilder {
     .connect_timeout(connect_timeout)
     .timeout(timeout)
     .tcp_nodelay(true)
-    .default_headers(headers)
     .use_rustls_tls()
 }
 
