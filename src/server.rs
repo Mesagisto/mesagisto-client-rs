@@ -7,19 +7,10 @@ use arcstr::ArcStr;
 use dashmap::DashMap;
 use nats::asynk::Connection;
 use nats::header::HeaderMap;
-use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
-
-#[derive(thiserror::Error, Debug)]
-pub enum ServerError {
-  #[error(transparent)]
-  IOError(#[from] std::io::Error),
-  #[error(transparent)]
-  DataError(#[from] crate::data::DataError),
-}
 
 #[derive(Singleton, Default)]
 pub struct Server {

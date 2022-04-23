@@ -9,26 +9,7 @@ use crate::res::RES;
 use crate::server::SERVER;
 use crate::EitherExt;
 use arcstr::ArcStr;
-use thiserror::Error;
 use tracing::trace;
-
-#[derive(Error, Debug)]
-pub enum CacheError {
-  #[error(transparent)]
-  RecvError(#[from] tokio::sync::oneshot::error::RecvError),
-  #[error(transparent)]
-  DataError(#[from] crate::data::DataError),
-  #[error(transparent)]
-  ServerError(#[from] crate::server::ServerError),
-  #[error(transparent)]
-  IoError(#[from] std::io::Error),
-  #[error("Timeout error when requesting image url")]
-  TimeoutError(#[from] tokio::time::error::Elapsed),
-  #[error(transparent)]
-  HttpError(#[from] reqwest::Error),
-  #[error(transparent)]
-  AnyhowError(#[from] anyhow::Error),
-}
 
 #[derive(Singleton, Default)]
 pub struct Cache {}
@@ -41,14 +22,14 @@ impl Cache {
     id: &Vec<u8>,
     url: &Option<ArcStr>,
     address: &ArcStr,
-  ) -> Result<PathBuf, CacheError> {
+  ) -> anyhow::Result<PathBuf> {
     match url {
       Some(url) => self.file_by_url(id, url).await,
       None => self.file_by_uid(id, address).await,
     }
   }
 
-  pub async fn file_by_uid(&self, uid: &Vec<u8>, address: &ArcStr) -> Result<PathBuf, CacheError> {
+  pub async fn file_by_uid(&self, uid: &Vec<u8>, address: &ArcStr) -> anyhow::Result<PathBuf> {
     let uid_str: ArcStr = base64_url::encode(uid).into();
     trace!("Caching file by uid {}", uid_str);
     let path = RES.path(&uid_str);
@@ -78,7 +59,7 @@ impl Cache {
       either::Either::Left(_) => panic!("Not correct response"),
     }
   }
-  pub async fn file_by_url(&self, id: &Vec<u8>, url: &ArcStr) -> Result<PathBuf, CacheError> {
+  pub async fn file_by_url(&self, id: &Vec<u8>, url: &ArcStr) -> anyhow::Result<PathBuf> {
     let id_str: ArcStr = base64_url::encode(id).into();
     let path = RES.path(&id_str);
     if path.exists() {
@@ -98,7 +79,7 @@ impl Cache {
     };
   }
 
-  pub async fn put_file(&self, id: &Vec<u8>, file: &PathBuf) -> Result<PathBuf, CacheError> {
+  pub async fn put_file(&self, id: &Vec<u8>, file: &PathBuf) -> anyhow::Result<PathBuf> {
     let id_str: ArcStr = base64_url::encode(id).into();
     let path = RES.path(&id_str);
     tokio::fs::rename(&file, &path).await?;

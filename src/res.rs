@@ -10,9 +10,6 @@ use tokio::sync::mpsc::channel;
 use tokio::sync::oneshot;
 use tracing::error;
 
-// U: AsRef<[u8]>,
-// F: Into<IVec>,
-
 type Handler =
   dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static;
 
@@ -45,7 +42,6 @@ impl Res {
               }
             }
           }
-          // log::trace!("changed: {:?}", event)
         }
         Err(e) => error!("watch error: {:?}", e),
       }
@@ -110,12 +106,6 @@ impl Res {
       .unwrap()
       .some()
   }
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum ResError {
-  #[error(transparent)]
-  EncryptError(#[from] aes_gcm::aead::Error),
 }
 
 #[cfg(test)]

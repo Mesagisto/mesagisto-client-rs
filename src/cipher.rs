@@ -3,14 +3,8 @@ use std::ops::Deref;
 use crate::LateInit;
 use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AesGcm};
 use arcstr::ArcStr;
-use thiserror::Error;
 use typenum::{UInt, UTerm, B0, B1, U12};
 
-#[derive(Error, Debug)]
-pub enum CipherError {
-  #[error(transparent)]
-  EncryptError(#[from] aes_gcm::aead::Error),
-}
 type Key = GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, B0>, B0>, B0>>;
 #[derive(Singleton, Default)]
 pub struct Cipher {

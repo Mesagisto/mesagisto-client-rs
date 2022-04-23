@@ -5,22 +5,10 @@ use aes_gcm::aead::Aead;
 use either::Either;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
-use thiserror::Error;
 
 use crate::{cipher::CIPHER, OkExt};
 
 use self::{events::Event, message::Message};
-#[derive(Error, Debug)]
-pub enum DataError {
-  #[error("uninitialized value<{0}> is used")]
-  UsedUninitializedValue(String),
-  #[error(transparent)]
-  SerdeJsonError(#[from] serde_cbor::Error),
-  #[error(transparent)]
-  EncryptError(#[from] aes_gcm::aead::Error),
-  #[error("Refue plain message")]
-  RefusePlainError,
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct Packet {
@@ -43,14 +31,14 @@ pub struct EncryptInfo {
 }
 
 impl Packet {
-  pub fn from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
+  pub fn from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
     if *CIPHER.enable {
       Self::encrypt_from(data)
     } else {
       Self::plain_from(data)
     }
   }
-  fn plain_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
+  fn plain_from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
     let ty;
     let bytes = match data {
       Either::Left(m) => {
@@ -70,7 +58,7 @@ impl Packet {
     }
     .ok()
   }
-  fn encrypt_from(data: Either<message::Message, events::Event>) -> Result<Self, DataError> {
+  fn encrypt_from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
     let bytes_nonce = CIPHER.new_nonce();
     let nonce = aes_gcm::Nonce::from_slice(&bytes_nonce);
 
@@ -94,10 +82,10 @@ impl Packet {
     }
     .ok()
   }
-  pub fn from_cbor(data: &Vec<u8>) -> Result<Either<Message, Event>, DataError> {
+  pub fn from_cbor(data: &Vec<u8>) -> anyhow::Result<Either<message::Message, Event>> {
     let packet: Packet = serde_cbor::from_slice(data)?;
     let handle_encrypt =
-      |packet: Packet, ty: bool| -> Result<Either<message::Message, Event>, DataError> {
+      |packet: Packet, ty: bool| -> anyhow::Result<Either<message::Message, Event>> {
         let encrypt = packet.encrypt.unwrap();
 
         let nonce = aes_gcm::Nonce::from_slice(&encrypt);
@@ -113,7 +101,7 @@ impl Packet {
     if packet.r#type == "message" {
       if packet.encrypt.is_none() {
         if *CIPHER.enable && !*CIPHER.refuse_plain {
-          Err(DataError::RefusePlainError)
+          Err(anyhow::anyhow!("Refue plain message"))
         } else {
           let message: Message = serde_cbor::from_slice(&packet.content)?;
           Ok(Either::Left(message))
@@ -124,7 +112,7 @@ impl Packet {
     } else if packet.r#type == "event" {
       if packet.encrypt.is_none() {
         if *CIPHER.enable && !*CIPHER.refuse_plain {
-          Err(DataError::RefusePlainError)
+          Err(anyhow::anyhow!("Refue plain message"))
         } else {
           let event: Event = serde_cbor::from_slice(&packet.content)?;
           Ok(Either::Right(event))
@@ -137,13 +125,13 @@ impl Packet {
     }
   }
 
-  pub fn to_cbor(self) -> Result<Vec<u8>, DataError> {
+  pub fn to_cbor(self) -> anyhow::Result<Vec<u8>> {
     Ok(serde_cbor::to_vec(&self)?)
   }
 }
 impl TryFrom<Either<message::Message, events::Event>> for Packet {
-  type Error = DataError;
-  fn try_from(value: Either<message::Message, events::Event>) -> Result<Self, Self::Error> {
+  type Error = anyhow::Error;
+  fn try_from(value: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
     Self::encrypt_from(value)
   }
 }
