@@ -26,7 +26,7 @@ pub struct Server {
   pub nats_header: LateInit<HeaderMap>,
   pub lib_header: LateInit<HeaderMap>,
   pub endpoint: DashMap<Vec<u8>, bool>,
-  pub compat_address: DashMap<ArcStr, ArcStr>,
+  pub unique_address: DashMap<ArcStr, ArcStr>,
 }
 impl Server {
   pub async fn init(&self, address: &ArcStr) {
@@ -59,15 +59,20 @@ impl Server {
     self.lib_header.init(header);
   }
 
-  pub fn compat_address(&self, address: &ArcStr) -> ArcStr {
+  pub fn unique_address(&self, address: &ArcStr) -> ArcStr {
     use sha2::{Digest, Sha256};
-    let entry = self.compat_address.entry(address.clone());
+    let entry = self.unique_address.entry(address.clone());
     entry
       .or_insert_with(|| {
         let mut hasher = Sha256::new();
-        hasher.update(CIPHER.unique_address(address));
+        let unique_address: ArcStr = if *CIPHER.enable {
+          format!("{}{}", address, *CIPHER.origin_key).into()
+        } else {
+          address.into()
+        };
+        hasher.update(unique_address);
         let hash_key = hasher.finalize();
-        format!("compat.{}", base64_url::encode(&hash_key)).into()
+        base64_url::encode(&hash_key).into()
       })
       .clone()
   }

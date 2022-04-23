@@ -4,7 +4,7 @@ use crate::LateInit;
 use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AesGcm};
 use arcstr::ArcStr;
 use thiserror::Error;
-use typenum::{U12, UTerm, UInt, B0, B1};
+use typenum::{UInt, UTerm, B0, B1, U12};
 
 #[derive(Error, Debug)]
 pub enum CipherError {
@@ -15,8 +15,8 @@ type Key = GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, 
 #[derive(Singleton, Default)]
 pub struct Cipher {
   inner: LateInit<AesGcm<Aes256, U12>>,
-  key: LateInit<Key>,
-  origin_key: LateInit<ArcStr>,
+  pub key: LateInit<Key>,
+  pub origin_key: LateInit<ArcStr>,
   pub enable: LateInit<bool>,
   pub refuse_plain: LateInit<bool>,
 }
@@ -53,13 +53,7 @@ impl Cipher {
   pub fn deinit(&self) {
     self.enable.init(false);
   }
-  pub fn unique_address(&self, address: &ArcStr) -> ArcStr {
-    if *CIPHER.enable {
-      format!("{}{}", address, *CIPHER.origin_key).into()
-    } else {
-      address.into()
-    }
-  }
+
   pub fn new_nonce(&self) -> [u8; 12] {
     use rand::RngCore;
     let mut rng = rand::thread_rng();
