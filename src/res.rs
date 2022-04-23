@@ -5,11 +5,10 @@ use dashmap::DashMap;
 use futures::future::BoxFuture;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
-use tracing::error;
 use std::path::PathBuf;
 use tokio::sync::mpsc::channel;
 use tokio::sync::oneshot;
-use uuid::Uuid;
+use tracing::error;
 
 // U: AsRef<[u8]>,
 // F: Into<IVec>,
@@ -117,10 +116,6 @@ impl Res {
 pub enum ResError {
   #[error(transparent)]
   EncryptError(#[from] aes_gcm::aead::Error),
-}
-
-pub fn new_id() -> Uuid {
-  Uuid::new_v4()
 }
 
 #[cfg(test)]

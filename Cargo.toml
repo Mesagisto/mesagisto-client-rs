@@ -37,7 +37,6 @@ notify = "5.0.0-pre.13"
 hex = "0.4"
 nats = "0.18.1"
 singleton = { git = "https://github.com/Itsusinn/singleton-rs.git", rev = "bee321c" }
-uuid = { version = "0.8", features = ["serde", "v4"] }
 reqwest = { version = "0.11" ,default-features = false ,features = ["rustls","socks","rustls-tls-webpki-roots","gzip"] }
 educe = { version = "0.4.18",default-features = false, features = ["Default"] }
 
