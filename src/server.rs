@@ -2,13 +2,16 @@ use crate::cipher::CIPHER;
 use crate::data::events::{Event, EventType};
 use crate::data::Packet;
 use crate::{EitherExt, LateInit};
+use anyhow::Ok;
 use arcstr::ArcStr;
 use dashmap::DashMap;
-use nats::header::HeaderMap;
 use nats::asynk::Connection;
-use tracing::{trace, error, debug, info};
+use nats::header::HeaderMap;
 use std::fmt::Debug;
 use std::future::Future;
+use std::sync::Arc;
+use tokio::task::JoinHandle;
+use tracing::{debug, error, info, trace};
 
 #[derive(thiserror::Error, Debug)]
 pub enum ServerError {
