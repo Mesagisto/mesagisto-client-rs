@@ -25,10 +25,9 @@ pub enum ServerError {
 pub struct Server {
   pub nc: LateInit<Connection>,
   pub address: LateInit<ArcStr>,
-  pub cid: LateInit<String>,
-  pub nats_header: LateInit<HeaderMap>,
+  pub cid: LateInit<u64>,
   pub lib_header: LateInit<HeaderMap>,
-  pub endpoint: DashMap<Vec<u8>, bool>,
+  pub endpoint: DashMap<ArcStr, JoinHandle<()>>,
   pub unique_address: DashMap<ArcStr, ArcStr>,
 }
 impl Server {
@@ -38,7 +37,6 @@ impl Server {
       let opts = nats::asynk::Options::new();
       info!("Connecting to nats server");
       let nc = opts
-        .with_name("telegram client")
         .connect(&*self.address.as_str())
         .await
         .expect("Failed to connect nats server");
@@ -46,16 +44,11 @@ impl Server {
       nc
     };
     self.nc.init(nc);
-    self.cid.init(self.nc.client_id().to_string());
+    self.cid.init(self.nc.client_id());
+
     let header = {
       let mut header = HeaderMap::new();
-      header.append("meta".to_string(),format!("cid={}", *self.cid));
-      header
-    };
-    self.nats_header.init(header);
-    let header = {
-      let mut header = HeaderMap::new();
-      header.append("meta".to_string(),format!("cid={}", *self.cid));
+      header.append("meta".to_string(), format!("cid={}", *self.cid));
       header.append("meta".to_string(), "lib".to_string());
       header
     };
@@ -79,117 +72,109 @@ impl Server {
       })
       .clone()
   }
-  //fixme: not a correct api
-  pub async fn send_and_receive<H, Fut>(
+  pub async fn send(
     &self,
-    target: Vec<u8>,
-    address: ArcStr,
+    target: &ArcStr,
+    address: &ArcStr,
     content: Packet,
-    handler: H,
-  ) -> Result<(), ServerError>
-  where
-    H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
-  {
-    let compat_address = self.compat_address(&address);
+    headers: Option<Arc<HeaderMap>>,
+  ) -> anyhow::Result<()> {
+    let unique_address = self.unique_address(&address);
     let content = content.to_cbor()?;
-
+    let headers = match headers {
+      Some(headers) => headers,
+      None => {
+        let mut headers = HeaderMap::new();
+        headers.clear();
+        headers.append("meta".to_string(), format!("sender={}", target));
+        Arc::new(headers)
+      }
+    };
     self
       .nc
-      .publish_with_reply_or_headers(
-        &compat_address.as_str(),
-        None,
-        Some(&*self.nats_header),
-        content,
-      )
-      .await?;
-    self
-      .try_create_endpoint(target, compat_address, handler)
+      .publish_with_reply_or_headers(&unique_address.as_str(), None, Some(&*headers), content)
       .await?;
     Ok(())
   }
 
-  pub async fn try_create_endpoint<H, Fut>(
+  pub async fn recv<H, Fut>(
     &self,
-    target: Vec<u8>,
-    address: ArcStr,
+    target: ArcStr,
+    address: &ArcStr,
     handler: H,
-  ) -> Result<(), ServerError>
+  ) -> anyhow::Result<()>
   where
-    H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
+    H: Fn(nats::asynk::Message, ArcStr) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
   {
-    debug!("Trying to create sub for {}", base64_url::encode(&target));
+    let address = self.unique_address(address);
     if self.endpoint.contains_key(&target) {
       return Ok(());
     }
-    self.endpoint.insert(target.clone(), true);
-
     debug!(
-      "Creating sub on {} for {} with compatibility",
-      address,
-      base64_url::encode(&target)
+      "Creating sub on {} for {}",
+      address, target
     );
+
     let sub = self.nc.subscribe(address.as_str()).await?;
+    let clone_target = target.clone();
     // the task spawned below should use singleton,because it's "outside" of our logic
-    tokio::spawn(async move {
+    let join = tokio::spawn(async move {
       async fn handle_incoming<H, Fut>(
         sub: &nats::asynk::Subscription,
-        target: Vec<u8>,
+        target: &ArcStr,
         handler: &H,
       ) -> Option<()>
       where
-        H: Fn(nats::asynk::Message, Vec<u8>) -> Fut + Send + Sync + 'static,
+        H: Fn(nats::asynk::Message, ArcStr) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
       {
         let next: Option<nats::asynk::Message> = {
           let next = sub.next().await?;
-          let meta = next.headers.as_ref()?.get("meta")?;
-          if meta.contains(&format!("cid={}", &*SERVER.cid)) {
+          let meta = next.headers.as_ref()?;
+          if !meta.is_not_self(target) {
+            None
+          } else if meta.is_remote_lib(*SERVER.cid) {
+            async fn handle_lib_message(next: nats::asynk::Message) -> anyhow::Result<()> {
+              debug!("Handling message sent by lib");
+              let packet = Packet::from_cbor(&next.data)?;
+              if packet.is_left() {
+                return Ok(());
+              }
+              // Maybe, one day rustc could be clever enough to conclude that packet is right(Event)
+              match packet.expect_right("Unreachable").data {
+                EventType::RequestImage { id } => {
+                  use crate::res::RES;
+                  let url = match RES.get_photo_url(&id).await {
+                    Some(s) => s,
+                    None => {
+                      info!("No image in db");
+                      return Ok(());
+                    }
+                  };
+                  let event: Event = EventType::RespondImage { id, url }.into();
+                  let packet = Packet::from(event.to_right())?.to_cbor()?;
+                  next.respond(packet).await.unwrap();
+                  Ok(())
+                }
+                _ => Ok(()),
+              }
+            }
+            if let Err(e) = handle_lib_message(next).await {
+              error!(
+                "Err when invoking nats message lib handler, {} \n backtrace {}",
+                e,
+                e.backtrace()
+              );
+            };
             None
           } else {
-            if meta.contains("lib") {
-              async fn handle_lib_message(next: nats::asynk::Message) -> anyhow::Result<()> {
-                debug!("Handling message sent by lib");
-                let packet = Packet::from_cbor(&next.data)?;
-                if packet.is_left() {
-                  return Ok(());
-                }
-                // Maybe, one day rustc could be clever enough to conclude that packet is right(Event)
-                match packet.expect_right("Unreachable").data {
-                  EventType::RequestImage { id } => {
-                    use crate::res::RES;
-                    let url = match RES.get_photo_url(&id).await {
-                      Some(s) => s,
-                      None => {
-                        info!("No image in db");
-                        return Ok(());
-                      }
-                    };
-                    let event: Event = EventType::RespondImage { id, url }.into();
-                    let packet = Packet::from(event.to_right())?.to_cbor()?;
-                    next.respond(packet).await.unwrap();
-                    Ok(())
-                  }
-                  _ => Ok(()),
-                }
-              }
-              if let Err(e) = handle_lib_message(next).await {
-                error!(
-                  "Err when invoking nats message lib handler, {} \n backtrace {}",
-                  e,
-                  e.backtrace()
-                );
-              };
-              None
-            } else {
-              Some(next)
-            }
+            Some(next)
           }
         };
         if let Some(next) = next {
-          trace!("Received message of target {}", base64_url::encode(&target));
-          if let Err(e) = handler(next, target).await {
+          trace!("Received message of target {}", &target);
+          if let Err(e) = handler(next, target.clone()).await {
             error!(
               "Err when invoking nats message handler, {} \n backtrace {}",
               e,
@@ -200,9 +185,10 @@ impl Server {
         None
       }
       loop {
-        handle_incoming(&sub, target.clone(), &handler).await;
+        handle_incoming(&sub, &target, &handler).await;
       }
     });
+    self.endpoint.insert(clone_target, join);
     Ok(())
   }
 
@@ -211,8 +197,8 @@ impl Server {
     address: &ArcStr,
     content: Packet,
     headers: Option<&HeaderMap>,
-  ) -> Result<nats::asynk::Message, ServerError> {
-    let address = self.compat_address(address);
+  ) -> anyhow::Result<nats::asynk::Message> {
+    let address = self.unique_address(address);
     trace!("Requesting on {}", address);
     let inbox = self.nc.new_inbox();
     let sub = self.nc.subscribe(&inbox).await?;
@@ -226,5 +212,40 @@ impl Server {
       .expect("the subscription has been unsubscribed or the connection is closed.");
     sub.unsubscribe().await?;
     Ok(reply)
+  }
+}
+
+pub trait HeaderMapExt {
+  fn is_not_self(&self, target: &ArcStr) -> bool;
+  fn is_remote_lib(&self, cid: u64) -> bool;
+}
+
+impl HeaderMapExt for HeaderMap {
+  #[inline]
+  fn is_not_self(&self, target: &ArcStr) -> bool {
+    let meta = self.get_all("meta");
+    let mut contains = false;
+    for m in meta {
+      if m == &format!("sender={}", target) {
+        contains = true;
+        break;
+      }
+    }
+    !contains
+  }
+  #[inline]
+  fn is_remote_lib(&self, cid:u64) -> bool {
+    let meta = self.get_all("meta");
+    let mut contains_lib = false;
+    let mut contains_cid = false;
+    for m in meta {
+      if m == "lib" {
+        contains_lib = true;
+      }
+      if m == &format!("cid={}", cid) {
+        contains_cid = true;
+      }
+    }
+    contains_lib && !contains_cid
   }
 }
