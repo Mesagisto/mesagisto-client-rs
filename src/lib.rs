@@ -115,20 +115,26 @@ impl<T> LateInit<T> {
   pub fn init(&self, value: T) {
     assert!(self.cell.set(value).is_ok())
   }
+  pub const fn new() -> LateInit<T> {
+    LateInit {
+      cell: OnceCell::new(),
+    }
+  }
 }
 
 impl<T> Default for LateInit<T> {
   fn default() -> Self {
-    LateInit {
-      cell: OnceCell::default(),
-    }
+    LateInit::new()
   }
 }
 
 impl<T> std::ops::Deref for LateInit<T> {
   type Target = T;
   fn deref(&self) -> &T {
-    self.cell.get().unwrap()
+    match self.cell.get() {
+      Some(v) => v,
+      None => panic!("LateInit not initialized"),
+    }
   }
 }
 
