@@ -204,7 +204,7 @@ impl Server {
     sub.unsubscribe().await?;
     Ok(reply)
   }
-  pub async fn unsub(&self, target: &ArcStr) {
+  pub fn unsub(&self, target: &ArcStr) {
     if let Some((_,join)) = self.endpoint.remove(target) {
       join.abort();
     }
