@@ -20,6 +20,7 @@ impl From<EventType> for Event {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "t", content = "c")]
+#[non_exhaustive]
 pub enum EventType {
   RequestImage {
     #[serde(with = "serde_bytes")]
