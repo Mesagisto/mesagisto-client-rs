@@ -131,9 +131,8 @@ impl<T> Default for LateInit<T> {
 impl<T> std::ops::Deref for LateInit<T> {
   type Target = T;
   fn deref(&self) -> &T {
-    match self.cell.get() {
-      Some(v) => v,
-      None => panic!("LateInit not initialized"),
+    unsafe {
+      self.cell.get_unchecked()
     }
   }
 }
