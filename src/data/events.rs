@@ -30,4 +30,12 @@ pub enum EventType {
     id: Vec<u8>,
     url: ArcStr,
   },
+  RequestEcho {
+    // should contains group_id, group_name
+    name: ArcStr,
+  },
+  RespondEcho {
+    // should contains group_id, group_name
+    name: ArcStr,
+  },
 }

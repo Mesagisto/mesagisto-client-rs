@@ -43,6 +43,9 @@ pub enum MessageType {
   Text {
     content: String,
   },
+  Edit {
+    content: String,
+  },
   Image {
     #[serde(with = "serde_bytes")]
     id: Vec<u8>,
