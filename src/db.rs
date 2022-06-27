@@ -16,7 +16,7 @@ impl Db {
   pub fn init(&self, db_name: Option<ArcStr>) {
     let db_name = db_name.unwrap_or(ArcStr::from("default"));
 
-    let options = sled::Config::default();
+    let options = sled::Config::default().cache_capacity(1024 * 1024);
     let image_db_path = format!("db/{}/image", db_name);
     let image_db = options.path(image_db_path.as_str()).open().unwrap();
     self.image_db.init(image_db);
@@ -50,7 +50,7 @@ impl Db {
     reverse: bool,
   ) -> anyhow::Result<()> {
     let msg_id_db = self.mid_db_map.entry(target.clone()).or_insert_with(|| {
-      let options = sled::Config::default();
+      let options = sled::Config::default().cache_capacity(1024 * 1024);
       let msg_id_db_path = format!(
         "db/{}/msg-id/{}",
         *self.db_name,
