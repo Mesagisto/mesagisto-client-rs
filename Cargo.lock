@@ -977,6 +977,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lateinit"
+version = "0.1.0"
+source = "git+https://github.com/Itsusinn/lateinit-rs.git?branch=master#579ebbd19cc06d2632b48b2a6229067f5662573e"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1043,6 +1051,7 @@ dependencies = [
  "futures",
  "generic-array",
  "hex",
+ "lateinit",
  "nats",
  "notify",
  "once_cell",

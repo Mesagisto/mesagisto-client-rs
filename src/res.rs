@@ -1,8 +1,9 @@
 use crate::db::DB;
-use crate::{LateInit, OptionExt};
+use crate::OptionExt;
 use arcstr::ArcStr;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
+use lateinit::LateInit;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
 use std::path::PathBuf;

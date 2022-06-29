@@ -1,6 +1,6 @@
-use crate::LateInit;
 use arcstr::ArcStr;
 use dashmap::DashMap;
+use lateinit::LateInit;
 use sled::IVec;
 use tracing::error;
 

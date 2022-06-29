@@ -3,7 +3,7 @@ use futures::FutureExt;
 use std::{path::PathBuf, time::Duration};
 use tokio::io::AsyncWriteExt;
 
-use crate::LateInit;
+use lateinit::LateInit;
 
 pub fn new_reqwest_builder() -> reqwest::ClientBuilder {
   let connect_timeout = Duration::from_secs(5);

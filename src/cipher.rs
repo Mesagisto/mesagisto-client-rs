@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
-use crate::LateInit;
 use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AesGcm};
 use arcstr::ArcStr;
+use lateinit::LateInit;
 use typenum::{UInt, UTerm, B0, B1, U12};
 
 type Key = GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, B0>, B0>, B0>>;

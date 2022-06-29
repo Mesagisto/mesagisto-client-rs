@@ -1,10 +1,11 @@
 use crate::cipher::CIPHER;
 use crate::data::events::{Event, EventType};
 use crate::data::Packet;
-use crate::{EitherExt, LateInit};
+use crate::EitherExt;
 use anyhow::Ok;
 use arcstr::ArcStr;
 use dashmap::DashMap;
+use lateinit::LateInit;
 use nats::asynk::Connection;
 use nats::header::HeaderMap;
 use std::future::Future;
@@ -102,10 +103,7 @@ impl Server {
     if self.endpoint.contains_key(&target) {
       return Ok(());
     }
-    debug!(
-      "Creating sub on {} for {}",
-      address, target
-    );
+    debug!("Creating sub on {} for {}", address, target);
 
     let sub = self.nc.subscribe(address.as_str()).await?;
     let clone_target = target.clone();
@@ -205,7 +203,7 @@ impl Server {
     Ok(reply)
   }
   pub fn unsub(&self, target: &ArcStr) {
-    if let Some((_,join)) = self.endpoint.remove(target) {
+    if let Some((_, join)) = self.endpoint.remove(target) {
       join.abort();
     }
   }
@@ -230,7 +228,7 @@ impl HeaderMapExt for HeaderMap {
     !contains
   }
   #[inline]
-  fn is_remote_lib(&self, cid:u64) -> bool {
+  fn is_remote_lib(&self, cid: u64) -> bool {
     let meta = self.get_all("meta");
     let mut contains_lib = false;
     let mut contains_cid = false;
