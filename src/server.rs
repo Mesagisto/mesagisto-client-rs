@@ -1,5 +1,5 @@
 use crate::cipher::CIPHER;
-use crate::data::events::{Event, EventType};
+use crate::data::events::Event;
 use crate::data::Packet;
 use crate::EitherExt;
 use anyhow::Ok;
@@ -53,11 +53,7 @@ impl Server {
     entry
       .or_insert_with(|| {
         let mut hasher = Sha256::new();
-        let unique_address: ArcStr = if *CIPHER.enable {
-          format!("{}{}", address, *CIPHER.origin_key).into()
-        } else {
-          address.into()
-        };
+        let unique_address: ArcStr = format!("{}{}", address, *CIPHER.origin_key).into();
         hasher.update(unique_address);
         let hash_key = hasher.finalize();
         base64_url::encode(&hash_key).into()
@@ -131,8 +127,8 @@ impl Server {
                 return Ok(());
               }
               // Maybe, one day rustc could be clever enough to conclude that packet is right(Event)
-              match packet.expect_right("Unreachable").data {
-                EventType::RequestImage { id } => {
+              match packet.expect_right("Unreachable") {
+                Event::RequestImage { id } => {
                   use crate::res::RES;
                   let url = match RES.get_photo_url(&id).await {
                     Some(s) => s,
@@ -141,7 +137,7 @@ impl Server {
                       return Ok(());
                     }
                   };
-                  let event: Event = EventType::RespondImage { id, url }.into();
+                  let event: Event = Event::RespondImage { id, url }.into();
                   let packet = Packet::from(event.to_right())?.to_cbor()?;
                   next.respond(packet).await.unwrap();
                   Ok(())

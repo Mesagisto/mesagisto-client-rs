@@ -2,7 +2,7 @@ use std::panic;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::data::events::{Event, EventType};
+use crate::data::events::Event;
 use crate::data::Packet;
 use crate::net::NET;
 use crate::res::RES;
@@ -43,7 +43,7 @@ impl Cache {
       return Ok(RES.wait_for(&uid_str).await?);
     }
     trace!("TmpFile dont exist,requesting image url");
-    let packet: Event = EventType::RequestImage { id: uid.clone() }.into();
+    let packet: Event = Event::RequestImage { id: uid.clone() }.into();
     // fixme error handling
     let packet = Packet::from(packet.to_right())?;
     // fixme timeout check
@@ -52,8 +52,8 @@ impl Cache {
     trace!("Get the image respond");
     let r_packet = Packet::from_cbor(&response.data)?;
     match r_packet {
-      either::Either::Right(event) => match event.data {
-        EventType::RespondImage { id, url } => self.file_by_url(&id, &url).await,
+      either::Either::Right(event) => match event {
+        Event::RespondImage { id, url } => self.file_by_url(&id, &url).await,
         _ => panic!("Not correct response"),
       },
       either::Either::Left(_) => panic!("Not correct response"),

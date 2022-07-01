@@ -11,8 +11,6 @@ pub struct Cipher {
   inner: LateInit<AesGcm<Aes256, U12>>,
   pub key: LateInit<Key>,
   pub origin_key: LateInit<ArcStr>,
-  pub enable: LateInit<bool>,
-  pub refuse_plain: LateInit<bool>,
 }
 
 impl Deref for Cipher {
@@ -24,10 +22,7 @@ impl Deref for Cipher {
 }
 
 impl Cipher {
-  pub fn init(&self, key: &ArcStr, refuse_plain: &bool) {
-    self.enable.init(true);
-    self.refuse_plain.init(refuse_plain.clone());
-
+  pub fn init(&self, key: &ArcStr) {
     let hash_key = {
       use sha2::{Digest, Sha256};
       self.origin_key.init(key.to_owned());
@@ -43,9 +38,6 @@ impl Cipher {
       Aes256Gcm::new(key)
     };
     self.inner.init(cipher);
-  }
-  pub fn deinit(&self) {
-    self.enable.init(false);
   }
 
   pub fn new_nonce(&self) -> [u8; 12] {

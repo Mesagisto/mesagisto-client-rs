@@ -6,7 +6,7 @@ use either::Either;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
-use crate::{cipher::CIPHER, OkExt};
+use crate::{cipher::CIPHER, OkExt, EitherExt};
 
 use self::{events::Event, message::Message};
 
@@ -17,7 +17,7 @@ pub struct Packet {
   #[serde(with = "serde_bytes")]
   pub content: Vec<u8>,
   #[serde(with = "serde_bytes")]
-  pub encrypt: Option<Vec<u8>>,
+  pub encrypt: Vec<u8>,
   pub version: String,
 }
 
@@ -32,32 +32,9 @@ pub struct EncryptInfo {
 
 impl Packet {
   pub fn from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
-    if *CIPHER.enable {
-      Self::encrypt_from(data)
-    } else {
-      Self::plain_from(data)
-    }
+    Self::encrypt_from(data)
   }
-  fn plain_from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
-    let ty;
-    let bytes = match data {
-      Either::Left(m) => {
-        ty = "message";
-        serde_cbor::to_vec(&m)?
-      }
-      Either::Right(e) => {
-        ty = "event";
-        serde_cbor::to_vec(&e)?
-      }
-    };
-    Self {
-      r#type: ty.into(),
-      content: bytes,
-      encrypt: None,
-      version: "v1".into(),
-    }
-    .ok()
-  }
+
   fn encrypt_from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
     let bytes_nonce = CIPHER.new_nonce();
     let nonce = aes_gcm::Nonce::from_slice(&bytes_nonce);
@@ -77,51 +54,19 @@ impl Packet {
     Self {
       r#type: ty.into(),
       content: ciphertext,
-      encrypt: Some(bytes_nonce.into()),
+      encrypt: bytes_nonce.into(),
       version: "v1".into(),
     }
     .ok()
   }
   pub fn from_cbor(data: &Vec<u8>) -> anyhow::Result<Either<message::Message, Event>> {
     let packet: Packet = serde_cbor::from_slice(data)?;
-    let handle_encrypt =
-      |packet: Packet, ty: bool| -> anyhow::Result<Either<message::Message, Event>> {
-        let encrypt = packet.encrypt.unwrap();
-
-        let nonce = aes_gcm::Nonce::from_slice(&encrypt);
-        let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
-        if ty {
-          let message: Message = serde_cbor::from_slice(&plaintext)?;
-          Ok(Either::Left(message))
-        } else {
-          let event: Event = serde_cbor::from_slice(&plaintext)?;
-          Ok(Either::Right(event))
-        }
-      };
-    if packet.r#type == "message" {
-      if packet.encrypt.is_none() {
-        if *CIPHER.enable && !*CIPHER.refuse_plain {
-          Err(anyhow::anyhow!("Refue plain message"))
-        } else {
-          let message: Message = serde_cbor::from_slice(&packet.content)?;
-          Ok(Either::Left(message))
-        }
-      } else {
-        handle_encrypt(packet, true)
-      }
-    } else if packet.r#type == "event" {
-      if packet.encrypt.is_none() {
-        if *CIPHER.enable && !*CIPHER.refuse_plain {
-          Err(anyhow::anyhow!("Refue plain message"))
-        } else {
-          let event: Event = serde_cbor::from_slice(&packet.content)?;
-          Ok(Either::Right(event))
-        }
-      } else {
-        handle_encrypt(packet, false)
-      }
-    } else {
-      unreachable!()
+    let nonce = aes_gcm::Nonce::from_slice(&packet.encrypt);
+    let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
+    match packet.r#type.as_str() {
+      "message" => serde_cbor::from_slice::<Message>(&plaintext)?.to_left().ok(),
+      "event" => serde_cbor::from_slice::<Event>(&plaintext)?.to_right().ok(),
+      &_ => unreachable!(),
     }
   }
 
@@ -147,7 +92,7 @@ mod test {
   };
   #[test]
   fn test() {
-    CIPHER.init(&"this is key".to_string().into(), &true);
+    CIPHER.init(&"this is key".to_string().into());
     let message = Message {
       profile: message::Profile {
         id: 1223232i64.to_be_bytes().to_vec(),

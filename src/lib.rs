@@ -31,10 +31,7 @@ pub struct MesagistoConfig {
   #[educe(Default = "default")]
   pub name: ArcStr,
   pub proxy: Option<ArcStr>,
-  #[educe(Default = true)]
-  pub cipher_enable: bool,
   pub cipher_key: ArcStr,
-  pub cipher_refuse_plain: bool,
   #[educe(Default = "nats://itsusinn.site:4222")]
   pub nats_address: ArcStr,
   pub photo_url_resolver: Option<Box<Handler>>,
@@ -46,12 +43,7 @@ impl MesagistoConfig {
   pub async fn apply(self) {
     DB.init(self.name.some());
     CACHE.init();
-    if self.cipher_enable {
-      CIPHER.init(&self.cipher_key, &self.cipher_refuse_plain);
-    } else {
-      CIPHER.deinit();
-    }
-
+    CIPHER.init(&self.cipher_key);
     RES.init().await;
     RES
       .photo_url_resolver
@@ -76,16 +68,8 @@ impl MesagistoConfigBuilder {
     self.config.proxy = proxy;
     self
   }
-  pub fn cipher_enable(mut self, enable: bool) -> Self {
-    self.config.cipher_enable = enable;
-    self
-  }
   pub fn cipher_key(mut self, key: impl Into<ArcStr>) -> Self {
     self.config.cipher_key = key.into();
-    self
-  }
-  pub fn cipher_refuse_plain(mut self, refuse: bool) -> Self {
-    self.config.cipher_refuse_plain = refuse;
     self
   }
   pub fn nats_address(mut self, address: impl Into<ArcStr>) -> Self {

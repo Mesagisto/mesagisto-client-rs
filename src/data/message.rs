@@ -38,7 +38,7 @@ impl Message {
 }
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "t", content = "c")]
+#[serde(tag = "type")]
 #[non_exhaustive]
 pub enum MessageType {
   Text {
