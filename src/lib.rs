@@ -145,7 +145,7 @@ pub trait OptionExt {
   where
     Self: Sized,
   {
-    Some(&self)
+    Some(self)
   }
 }
 impl<T> OptionExt for T {}

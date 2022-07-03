@@ -45,6 +45,6 @@ impl Cipher {
     let mut rng = rand::thread_rng();
     let mut nonce = [0u8; 12];
     rng.fill_bytes(&mut nonce);
-    return nonce;
+    nonce
   }
 }

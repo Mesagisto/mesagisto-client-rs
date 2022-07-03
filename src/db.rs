@@ -14,7 +14,7 @@ pub struct Db {
 }
 impl Db {
   pub fn init(&self, db_name: Option<ArcStr>) {
-    let db_name = db_name.unwrap_or(ArcStr::from("default"));
+    let db_name = db_name.unwrap_or_else(|| ArcStr::from("default"));
 
     let options = sled::Config::default().cache_capacity(1024 * 1024);
     let image_db_path = format!("db/{}/image", db_name);
@@ -60,20 +60,19 @@ impl Db {
     });
     msg_id_db.insert(&uid, id.clone())?;
     if reverse {
-      msg_id_db.insert(&id, uid.clone())?;
+      msg_id_db.insert(&id, uid)?;
     }
     Ok(())
   }
-  pub fn get_msg_id(&self, target: &Vec<u8>, id: &Vec<u8>) -> anyhow::Result<Option<Vec<u8>>> {
+  pub fn get_msg_id(&self, target: &[u8], id: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
     let msg_id_db = match self.mid_db_map.get(target) {
       Some(v) => v,
       None => return Ok(None),
     };
     let id = match msg_id_db.get(id)? {
-      Some(v) => v,
+      Some(v) => v.to_vec(),
       None => return Ok(None),
-    }
-    .to_vec();
-    return Ok(Some(id));
+    };
+    Ok(Some(id))
   }
 }

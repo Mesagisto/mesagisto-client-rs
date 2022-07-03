@@ -29,7 +29,7 @@ impl Server {
       let opts = nats::asynk::Options::new();
       info!("Connecting to nats server");
       let nc = opts
-        .connect(&*self.address.as_str())
+        .connect(self.address.as_str())
         .await
         .expect("Failed to connect nats server");
       info!("Connected sucessfully");
@@ -67,7 +67,7 @@ impl Server {
     content: Packet,
     headers: Option<Arc<HeaderMap>>,
   ) -> anyhow::Result<()> {
-    let unique_address = self.unique_address(&address);
+    let unique_address = self.unique_address(address);
     let content = content.to_cbor()?;
     let headers = match headers {
       Some(headers) => headers,
@@ -80,7 +80,7 @@ impl Server {
     };
     self
       .nc
-      .publish_with_reply_or_headers(&unique_address.as_str(), None, Some(&*headers), content)
+      .publish_with_reply_or_headers(unique_address.as_str(), None, Some(&*headers), content)
       .await?;
     Ok(())
   }
@@ -137,7 +137,7 @@ impl Server {
                       return Ok(());
                     }
                   };
-                  let event: Event = Event::RespondImage { id, url }.into();
+                  let event: Event = Event::RespondImage { id, url };
                   let packet = Packet::from(event.to_right())?.to_cbor()?;
                   next.respond(packet).await.unwrap();
                   Ok(())

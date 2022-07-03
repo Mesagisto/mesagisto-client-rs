@@ -6,7 +6,7 @@ use either::Either;
 use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
-use crate::{cipher::CIPHER, OkExt, EitherExt};
+use crate::{cipher::CIPHER, EitherExt, OkExt};
 
 use self::{events::Event, message::Message};
 
@@ -59,12 +59,14 @@ impl Packet {
     }
     .ok()
   }
-  pub fn from_cbor(data: &Vec<u8>) -> anyhow::Result<Either<message::Message, Event>> {
+  pub fn from_cbor(data: &[u8]) -> anyhow::Result<Either<message::Message, Event>> {
     let packet: Packet = serde_cbor::from_slice(data)?;
     let nonce = aes_gcm::Nonce::from_slice(&packet.encrypt);
     let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
     match packet.r#type.as_str() {
-      "message" => serde_cbor::from_slice::<Message>(&plaintext)?.to_left().ok(),
+      "message" => serde_cbor::from_slice::<Message>(&plaintext)?
+        .to_left()
+        .ok(),
       "event" => serde_cbor::from_slice::<Event>(&plaintext)?.to_right().ok(),
       &_ => unreachable!(),
     }

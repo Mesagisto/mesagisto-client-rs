@@ -43,7 +43,7 @@ impl Cache {
       return Ok(RES.wait_for(&uid_str).await?);
     }
     trace!("TmpFile dont exist,requesting image url");
-    let packet: Event = Event::RequestImage { id: uid.clone() }.into();
+    let packet: Event = Event::RequestImage { id: uid.clone() };
     // fixme error handling
     let packet = Packet::from(packet.to_right())?;
     // fixme timeout check
@@ -67,7 +67,7 @@ impl Cache {
     }
 
     let tmp_path = RES.tmp_path(&id_str);
-    return if tmp_path.exists() {
+    if tmp_path.exists() {
       let fut = RES.wait_for(&id_str);
       let path = tokio::time::timeout(std::time::Duration::from_secs(5), fut).await??;
       Ok(path)
@@ -76,7 +76,7 @@ impl Cache {
       NET.download(url, &tmp_path).await?;
       tokio::fs::rename(&tmp_path, &path).await?;
       Ok(path)
-    };
+    }
   }
 
   pub async fn put_file(&self, id: &Vec<u8>, file: &PathBuf) -> anyhow::Result<PathBuf> {
