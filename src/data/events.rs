@@ -1,7 +1,7 @@
 use arcstr::ArcStr;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize,Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 #[non_exhaustive]
