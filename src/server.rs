@@ -6,9 +6,10 @@ use anyhow::Ok;
 use arcstr::ArcStr;
 use dashmap::DashMap;
 use lateinit::LateInit;
-use nats::asynk::Connection;
+use nats::Connection;
 use nats::header::HeaderMap;
-use std::future::Future;
+use std::collections::HashSet;
+use std::{future::Future, collections::HashMap};
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, trace};
@@ -26,7 +27,7 @@ impl Server {
   pub async fn init(&self, address: &ArcStr) {
     self.address.init(address.to_owned());
     let nc = {
-      let opts = nats::asynk::Options::new();
+      let opts = nats::Options::new();
       info!("Connecting to nats server");
       let nc = opts
         .connect(self.address.as_str())
@@ -36,13 +37,14 @@ impl Server {
       nc
     };
     self.nc.init(nc);
-    self.cid.init(self.nc.client_id());
+    self.cid.init(self.nc.client_id().await);
 
     let header = {
-      let mut header = HeaderMap::new();
-      header.append("meta".to_string(), format!("cid={}", *self.cid));
-      header.append("meta".to_string(), "lib".to_string());
-      header
+      let mut inner = HashMap::default();
+      let entry = inner.entry("meta".to_string()).or_insert_with(HashSet::default);
+      entry.insert(format!("cid={}", *self.cid));
+      entry.insert("lib".to_string());
+      HeaderMap { inner }
     };
     self.lib_header.init(header);
   }
@@ -72,9 +74,11 @@ impl Server {
     let headers = match headers {
       Some(headers) => headers,
       None => {
-        let mut headers = HeaderMap::new();
-        headers.clear();
-        headers.append("meta".to_string(), format!("sender={}", target));
+
+        let mut inner = HashMap::default();
+        let entry = inner.entry("meta".to_string()).or_insert_with(HashSet::default);
+        entry.insert(format!("sender={}", target));
+        let headers = HeaderMap { inner };
         Arc::new(headers)
       }
     };
@@ -92,7 +96,7 @@ impl Server {
     handler: H,
   ) -> anyhow::Result<()>
   where
-    H: Fn(nats::asynk::Message, ArcStr) -> Fut + Send + Sync + 'static,
+    H: Fn(nats::Message, ArcStr) -> Fut + Send + Sync + 'static,
     Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
   {
     let address = self.unique_address(address);
@@ -106,21 +110,21 @@ impl Server {
     // the task spawned below should use singleton,because it's "outside" of our logic
     let join = tokio::spawn(async move {
       async fn handle_incoming<H, Fut>(
-        sub: &nats::asynk::Subscription,
+        sub: &nats::Subscription,
         target: &ArcStr,
         handler: &H,
       ) -> Option<()>
       where
-        H: Fn(nats::asynk::Message, ArcStr) -> Fut + Send + Sync + 'static,
+        H: Fn(nats::Message, ArcStr) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
       {
-        let next: Option<nats::asynk::Message> = {
+        let next: Option<nats::Message> = {
           let next = sub.next().await?;
           let meta = next.headers.as_ref()?;
           if !meta.is_not_self(target) {
             None
           } else if meta.is_remote_lib(*SERVER.cid) {
-            async fn handle_lib_message(next: nats::asynk::Message) -> anyhow::Result<()> {
+            async fn handle_lib_message(next: nats::Message) -> anyhow::Result<()> {
               debug!("Handling message sent by lib");
               let packet = Packet::from_cbor(&next.data)?;
               if packet.is_left() {
@@ -182,7 +186,7 @@ impl Server {
     address: &ArcStr,
     content: Packet,
     headers: Option<&HeaderMap>,
-  ) -> anyhow::Result<nats::asynk::Message> {
+  ) -> anyhow::Result<nats::Message> {
     let address = self.unique_address(address);
     trace!("Requesting on {}", address);
     let inbox = self.nc.new_inbox();
@@ -213,7 +217,13 @@ pub trait HeaderMapExt {
 impl HeaderMapExt for HeaderMap {
   #[inline]
   fn is_not_self(&self, target: &ArcStr) -> bool {
-    let meta = self.get_all("meta");
+    let inner: &HashMap<String,HashSet<String>> = &self.inner;
+    let meta = inner.get("meta");
+    let meta = match meta {
+      None => return false,
+      Some(v) => v
+    };
+
     let mut contains = false;
     for m in meta {
       if m == &format!("sender={}", target) {
@@ -225,7 +235,13 @@ impl HeaderMapExt for HeaderMap {
   }
   #[inline]
   fn is_remote_lib(&self, cid: u64) -> bool {
-    let meta = self.get_all("meta");
+    let inner: &HashMap<String,HashSet<String>> = &self.inner;
+    let meta = inner.get("meta");
+    let meta = match meta {
+      None => return true,
+      Some(v) => v
+    };
+
     let mut contains_lib = false;
     let mut contains_cid = false;
     for m in meta {

@@ -17,7 +17,7 @@ rand = "0.8.5"
 
 futures = "0.3.21"
 base64-url = "1.4.13"
-serde = "1.0.137"
+serde = "1.0.138"
 serde_cbor = "0.11.2"
 serde_bytes = "0.11.6"
 
@@ -35,7 +35,7 @@ anyhow = { version = "1.0.58", features = ["backtrace"] }
 notify = "5.0.0-pre.15"
 # async
 hex = "0.4.3"
-nats = "0.21.0"
+nats = { package = "nats-aflowt", version = "0.16.105" }
 singleton = { branch = "master", git = "https://github.com/Itsusinn/singleton-rs.git" }
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls","rustls-tls","socks","gzip"] }
 educe = { version = "0.4.19", default-features = false, features = ["Default"] }
