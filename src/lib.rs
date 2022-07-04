@@ -1,4 +1,4 @@
-#![feature(fn_traits)]
+#![feature(fn_traits, trait_alias, backtrace)]
 use arcstr::ArcStr;
 use cache::CACHE;
 use cipher::CIPHER;
@@ -40,7 +40,7 @@ impl MesagistoConfig {
   pub fn builder() -> MesagistoConfigBuilder {
     MesagistoConfigBuilder::new()
   }
-  pub async fn apply(self) {
+  pub async fn apply(self) -> anyhow::Result<()> {
     DB.init(self.name.some());
     CACHE.init();
     CIPHER.init(&self.cipher_key);
@@ -48,8 +48,9 @@ impl MesagistoConfig {
     RES
       .photo_url_resolver
       .init(self.photo_url_resolver.unwrap());
-    SERVER.init(&self.nats_address).await;
+    SERVER.init(&self.nats_address).await?;
     NET.init(self.proxy);
+    Ok(())
   }
 }
 #[derive(Default)]
@@ -181,3 +182,25 @@ pub trait EitherExt<A> {
   }
 }
 impl<T, A> EitherExt<A> for T {}
+
+pub trait LogResultExt<T> {
+  fn log_if_error(self, message: &str) -> Option<T>;
+}
+
+impl<T> LogResultExt<T> for anyhow::Result<T> {
+  #[inline(always)]
+  fn log_if_error(self, message: &str) -> Option<T> {
+    match self {
+      Ok(v) => Some(v),
+      Err(e) => {
+        tracing::error!(
+          "{}, ErrorType {}\n Backtrace {:#?}",
+          message,
+          e,
+          e.backtrace()
+        );
+        None
+      }
+    }
+  }
+}

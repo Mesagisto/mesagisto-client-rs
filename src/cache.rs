@@ -47,10 +47,10 @@ impl Cache {
     // fixme error handling
     let packet = Packet::from(packet.to_right())?;
     // fixme timeout check
-    let response = SERVER.request(address, packet, Some(&*SERVER.lib_header));
+    let response = SERVER.request(address, packet, SERVER.new_lib_header()?);
     let response = tokio::time::timeout(Duration::from_secs(5), response).await??;
     trace!("Get the image respond");
-    let r_packet = Packet::from_cbor(&response.data)?;
+    let r_packet = Packet::from_cbor(&response.payload)?;
     match r_packet {
       either::Either::Right(event) => match event {
         Event::RespondImage { id, url } => self.file_by_url(&id, &url).await,
