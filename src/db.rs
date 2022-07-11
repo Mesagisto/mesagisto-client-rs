@@ -1,4 +1,5 @@
 use arcstr::ArcStr;
+use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use lateinit::LateInit;
 use sled::IVec;
@@ -23,6 +24,7 @@ impl Db {
 
     self.db_name.init(db_name);
   }
+
   pub fn put_image_id<U, F>(&self, uid: U, file_id: F)
   where
     U: AsRef<[u8]>,
@@ -30,6 +32,7 @@ impl Db {
   {
     self.image_db.insert(uid, file_id).unwrap();
   }
+
   pub fn get_image_id<T>(&self, uid: T) -> Option<IVec>
   where
     T: AsRef<[u8]>,
@@ -42,13 +45,14 @@ impl Db {
       }
     }
   }
+
   pub fn put_msg_id(
     &self,
     target: Vec<u8>,
     uid: Vec<u8>,
     id: Vec<u8>,
     reverse: bool,
-  ) -> anyhow::Result<()> {
+  ) -> Result<()> {
     let msg_id_db = self.mid_db_map.entry(target.clone()).or_insert_with(|| {
       let options = sled::Config::default().cache_capacity(1024 * 1024);
       let msg_id_db_path = format!(
@@ -64,7 +68,8 @@ impl Db {
     }
     Ok(())
   }
-  pub fn get_msg_id(&self, target: &[u8], id: &[u8]) -> anyhow::Result<Option<Vec<u8>>> {
+
+  pub fn get_msg_id(&self, target: &[u8], id: &[u8]) -> Result<Option<Vec<u8>>> {
     let msg_id_db = match self.mid_db_map.get(target) {
       Some(v) => v,
       None => return Ok(None),

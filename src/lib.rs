@@ -2,6 +2,7 @@
 use arcstr::ArcStr;
 use cache::CACHE;
 use cipher::CIPHER;
+use color_eyre::eyre::Result;
 use db::DB;
 use educe::Educe;
 use futures::future::BoxFuture;
@@ -22,8 +23,7 @@ pub mod server;
 #[macro_use]
 extern crate singleton;
 
-type Handler =
-  dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static;
+type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
 
 #[derive(Educe)]
 #[educe(Default)]
@@ -40,7 +40,8 @@ impl MesagistoConfig {
   pub fn builder() -> MesagistoConfigBuilder {
     MesagistoConfigBuilder::new()
   }
-  pub async fn apply(self) -> anyhow::Result<()> {
+
+  pub async fn apply(self) -> Result<()> {
     DB.init(self.name.some());
     CACHE.init();
     CIPHER.init(&self.cipher_key);
@@ -61,30 +62,36 @@ impl MesagistoConfigBuilder {
   pub fn new() -> Self {
     Self::default()
   }
+
   pub fn name(mut self, name: impl Into<ArcStr>) -> Self {
     self.config.name = name.into();
     self
   }
+
   pub fn proxy(mut self, proxy: Option<ArcStr>) -> Self {
     self.config.proxy = proxy;
     self
   }
+
   pub fn cipher_key(mut self, key: impl Into<ArcStr>) -> Self {
     self.config.cipher_key = key.into();
     self
   }
+
   pub fn nats_address(mut self, address: impl Into<ArcStr>) -> Self {
     self.config.nats_address = address.into();
     self
   }
+
   pub fn photo_url_resolver<F>(mut self, resolver: F) -> Self
   where
-    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static,
+    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static,
   {
     let h = Box::new(resolver);
     self.config.photo_url_resolver = Some(h);
     self
   }
+
   pub fn build(self) -> MesagistoConfig {
     self.config
   }
@@ -187,14 +194,14 @@ pub trait LogResultExt<T> {
   fn log_if_error(self, message: &str) -> Option<T>;
 }
 
-impl<T> LogResultExt<T> for anyhow::Result<T> {
+impl<T> LogResultExt<T> for color_eyre::eyre::Result<T> {
   #[inline(always)]
   fn log_if_error(self, message: &str) -> Option<T> {
     match self {
       Ok(v) => Some(v),
       Err(e) => {
         tracing::error!(
-          "{}, ErrorType {}\n Backtrace {:#?}",
+          "{}, ErrorType {}\nBacktrace {:#?}",
           message,
           e,
           e.backtrace()

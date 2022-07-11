@@ -32,6 +32,7 @@ impl Message {
       chain,
     }
   }
+
   pub fn id_i64(&self) -> Option<i64> {
     i64::from_be_bytes(self.id.clone().try_into().ignore()?).some()
   }

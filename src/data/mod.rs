@@ -1,14 +1,15 @@
 pub mod events;
 pub mod message;
 
-use aes_gcm::aead::Aead;
-use either::Either;
-use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 
-use crate::{cipher::CIPHER, EitherExt, OkExt};
+use aes_gcm::aead::Aead;
+use color_eyre::{eyre, eyre::Result};
+use either::Either;
+use serde::{Deserialize, Serialize};
 
 use self::{events::Event, message::Message};
+use crate::{cipher::CIPHER, EitherExt, OkExt};
 
 #[derive(Serialize, Deserialize)]
 pub struct Packet {
@@ -31,11 +32,11 @@ pub struct EncryptInfo {
 }
 
 impl Packet {
-  pub fn from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
+  pub fn from(data: Either<message::Message, events::Event>) -> Result<Self> {
     Self::encrypt_from(data)
   }
 
-  fn encrypt_from(data: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
+  fn encrypt_from(data: Either<message::Message, events::Event>) -> Result<Self> {
     let bytes_nonce = CIPHER.new_nonce();
     let nonce = aes_gcm::Nonce::from_slice(&bytes_nonce);
 
@@ -59,7 +60,8 @@ impl Packet {
     }
     .ok()
   }
-  pub fn from_cbor(data: &[u8]) -> anyhow::Result<Either<message::Message, Event>> {
+
+  pub fn from_cbor(data: &[u8]) -> Result<Either<message::Message, Event>> {
     let packet: Packet = serde_cbor::from_slice(data)?;
     let nonce = aes_gcm::Nonce::from_slice(&packet.encrypt);
     let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
@@ -72,25 +74,26 @@ impl Packet {
     }
   }
 
-  pub fn to_cbor(self) -> anyhow::Result<Vec<u8>> {
+  pub fn to_cbor(self) -> Result<Vec<u8>> {
     Ok(serde_cbor::to_vec(&self)?)
   }
 }
 impl TryFrom<Either<message::Message, events::Event>> for Packet {
-  type Error = anyhow::Error;
-  fn try_from(value: Either<message::Message, events::Event>) -> anyhow::Result<Self> {
+  type Error = eyre::Error;
+
+  fn try_from(value: Either<message::Message, events::Event>) -> Result<Self> {
     Self::encrypt_from(value)
   }
 }
 #[cfg(test)]
 mod test {
-  use crate::EitherExt;
   use crate::{
     cipher::CIPHER,
     data::{
       message::{self, Message},
       Packet,
     },
+    EitherExt,
   };
   #[test]
   fn test() {

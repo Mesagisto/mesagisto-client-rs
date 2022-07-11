@@ -32,8 +32,7 @@ impl Cipher {
     };
     self.key.init(hash_key);
     let cipher = {
-      use aes_gcm::aead::NewAead;
-      use aes_gcm::Aes256Gcm;
+      use aes_gcm::{aead::NewAead, Aes256Gcm};
       let key = aes_gcm::Key::from_slice(self.key.as_slice());
       Aes256Gcm::new(key)
     };

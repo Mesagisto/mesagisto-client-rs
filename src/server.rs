@@ -1,19 +1,20 @@
-use crate::cipher::CIPHER;
-use crate::data::events::Event;
-use crate::data::Packet;
-use crate::EitherExt;
-use crate::LogResultExt;
-use anyhow::Ok;
+use std::future::Future;
+
 use arcstr::ArcStr;
+use color_eyre::eyre::{eyre, Result};
 use dashmap::DashMap;
 use futures::StreamExt;
 use lateinit::LateInit;
-use nats::header::HeaderMap;
-use nats::{Client, HeaderValue};
+use nats::{header::HeaderMap, Client, HeaderValue};
 use rand::prelude::random;
-use std::future::Future;
 use tokio::task::JoinHandle;
 use tracing::{debug, info, trace};
+
+use crate::{
+  cipher::CIPHER,
+  data::{events::Event, Packet},
+  EitherExt, LogResultExt,
+};
 
 #[derive(Singleton, Default)]
 pub struct Server {
@@ -25,7 +26,7 @@ pub struct Server {
   pub unique_address: DashMap<ArcStr, ArcStr>,
 }
 impl Server {
-  pub async fn init(&self, address: &ArcStr) -> anyhow::Result<()> {
+  pub async fn init(&self, address: &ArcStr) -> Result<()> {
     self.address.init(address.to_owned());
     let client = {
       info!("Connecting to nats server");
@@ -50,7 +51,8 @@ impl Server {
     self.lib_header.init(header);
     Ok(())
   }
-  pub fn new_lib_header(&self) -> anyhow::Result<HeaderMap> {
+
+  pub fn new_lib_header(&self) -> Result<HeaderMap> {
     let mut header = HeaderMap::new();
     header.append(
       "meta",
@@ -73,13 +75,14 @@ impl Server {
       })
       .clone()
   }
+
   pub async fn send(
     &self,
     target: &ArcStr,
     address: &ArcStr,
     content: Packet,
     headers: Option<HeaderMap>,
-  ) -> anyhow::Result<()> {
+  ) -> Result<()> {
     let unique_address = self.unique_address(address);
     let payload = content.to_cbor()?;
     let headers = match headers {
@@ -102,19 +105,14 @@ impl Server {
         bytes::Bytes::from(payload),
       )
       .await
-      .map_err(|e| anyhow::anyhow!(e))?;
+      .map_err(|e| eyre!(e))?;
     Ok(())
   }
 
-  pub async fn recv<H, Fut>(
-    &self,
-    target: ArcStr,
-    address: &ArcStr,
-    handler: H,
-  ) -> anyhow::Result<()>
+  pub async fn recv<H, Fut>(&self, target: ArcStr, address: &ArcStr, handler: H) -> Result<()>
   where
     H: Fn(nats::Message, ArcStr) -> Fut + Send + Sync + 'static,
-    Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
+    Fut: Future<Output = Result<()>> + Send + 'static,
   {
     let address = self.unique_address(address);
     if self.endpoint.contains_key(&target) {
@@ -122,9 +120,14 @@ impl Server {
     }
     debug!("Creating sub on {} for {}", address, target);
 
-    let mut sub = self.client.subscribe(address.to_string()).await?;
+    let mut sub = self
+      .client
+      .subscribe(address.to_string())
+      .await
+      .map_err(|e| eyre!(e))?;
     let clone_target = target.clone();
-    // the task spawned below should use singleton,because it's "outside" of our logic
+    // the task spawned below should use singleton,because it's "outside" of our
+    // logic
     let join = tokio::spawn(async move {
       while let Some(next) = sub.next().await {
         handle_incoming(next, &target, &handler)
@@ -135,10 +138,10 @@ impl Server {
         next: nats::Message,
         target: &ArcStr,
         handler: &H,
-      ) -> anyhow::Result<()>
+      ) -> Result<()>
       where
         H: Fn(nats::Message, ArcStr) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = anyhow::Result<()>> + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
       {
         let next: Option<nats::Message> = if let Some(meta) = next.headers.as_ref() {
           if !meta.is_not_self(target) {
@@ -168,11 +171,15 @@ impl Server {
     address: &ArcStr,
     content: Packet,
     headers: HeaderMap,
-  ) -> anyhow::Result<nats::Message> {
+  ) -> Result<nats::Message> {
     let address = self.unique_address(address);
     trace!("Requesting on {}", address);
     let inbox = self.client.new_inbox();
-    let mut sub = self.client.subscribe(inbox.clone()).await?;
+    let mut sub = self
+      .client
+      .subscribe(inbox.clone())
+      .await
+      .map_err(|e| eyre!(e))?;
     self
       .client
       .publish_with_reply_and_headers(
@@ -182,7 +189,7 @@ impl Server {
         bytes::Bytes::from(content.to_cbor()?),
       )
       .await
-      .map_err(|e| anyhow::anyhow!(e))?;
+      .map_err(|e| eyre!(e))?;
     let reply = sub
       .next()
       .await
@@ -190,18 +197,21 @@ impl Server {
     sub.unsubscribe().await?;
     Ok(reply)
   }
+
   pub fn unsub(&self, target: &ArcStr) {
     if let Some((_, join)) = self.endpoint.remove(target) {
       join.abort();
     }
   }
-  async fn handle_lib_message(next: nats::Message) -> anyhow::Result<()> {
+
+  async fn handle_lib_message(next: nats::Message) -> Result<()> {
     debug!("Handling message sent by lib");
     let packet = Packet::from_cbor(&next.payload)?;
     if packet.is_left() {
       return Ok(());
     }
-    // Maybe, one day rustc could be clever enough to conclude that packet is right(Event)
+    // Maybe, one day rustc could be clever enough to conclude that packet is
+    // right(Event)
     match packet.expect_right("Unreachable") {
       Event::RequestImage { id } => {
         use crate::res::RES;
@@ -217,12 +227,12 @@ impl Server {
 
         let reply = next
           .reply
-          .ok_or_else(|| anyhow::anyhow!("No reply subject to reply to"))?;
+          .ok_or_else(|| eyre!("No reply subject to reply to"))?;
         SERVER
           .client
           .publish(reply, bytes::Bytes::from(payload))
           .await
-          .map_err(|e| anyhow::anyhow!(e))?;
+          .map_err(|e| eyre!(e))?;
         Ok(())
       }
       _ => Ok(()),
@@ -249,6 +259,7 @@ impl HeaderMapExt for HeaderMap {
     }
     !contains
   }
+
   #[inline]
   fn is_remote_lib(&self, cid: u64) -> bool {
     let meta = self.get_all("meta").into_iter();

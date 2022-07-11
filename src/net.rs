@@ -1,9 +1,10 @@
-use arcstr::ArcStr;
-use futures::FutureExt;
 use std::{path::PathBuf, time::Duration};
-use tokio::io::AsyncWriteExt;
 
+use arcstr::ArcStr;
+use color_eyre::eyre::Result;
+use futures::FutureExt;
 use lateinit::LateInit;
+use tokio::io::AsyncWriteExt;
 
 pub fn new_reqwest_builder() -> reqwest::ClientBuilder {
   let connect_timeout = Duration::from_secs(5);
@@ -35,7 +36,8 @@ impl Net {
         .expect("reqwest::Client create failed"),
     );
   }
-  pub async fn download(&self, url: &ArcStr, dst: &PathBuf) -> anyhow::Result<()> {
+
+  pub async fn download(&self, url: &ArcStr, dst: &PathBuf) -> Result<()> {
     let mut dst_file = tokio::fs::File::create(&dst).await?;
     self
       .inner

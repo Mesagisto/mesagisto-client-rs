@@ -1,18 +1,18 @@
-use crate::db::DB;
-use crate::OptionExt;
+use std::path::PathBuf;
+
 use arcstr::ArcStr;
+use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
-use std::path::PathBuf;
-use tokio::sync::mpsc::channel;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc::channel, oneshot};
 use tracing::error;
 
-type Handler =
-  dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static;
+use crate::{db::DB, OptionExt};
+
+type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
 
 #[derive(Singleton, Default)]
 pub struct Res {
@@ -49,6 +49,7 @@ impl Res {
     }
     Ok(())
   }
+
   pub fn path(&self, id: &ArcStr) -> PathBuf {
     let mut path = self.directory.clone();
     path.push(id.as_str());
@@ -60,6 +61,7 @@ impl Res {
     path.push(format!("{}.tmp", id));
     path
   }
+
   pub fn wait_for(&self, id: &ArcStr) -> oneshot::Receiver<PathBuf> {
     let (sender, receiver) = oneshot::channel();
     self
@@ -69,6 +71,7 @@ impl Res {
       .push(sender);
     receiver
   }
+
   pub async fn init(&self) {
     let path = {
       let mut dir = std::env::temp_dir();
@@ -88,9 +91,10 @@ impl Res {
   {
     DB.put_image_id(uid, file_id);
   }
+
   pub fn resolve_photo_url<F>(&self, f: F)
   where
-    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<anyhow::Result<ArcStr>> + Send + Sync + 'static,
+    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static,
   {
     let h = Box::new(f);
     self.photo_url_resolver.init(h);
