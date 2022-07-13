@@ -29,13 +29,13 @@ either = "1.7.0"
 generic-array = "0.14.5"
 typenum = "1.15.0"
 tokio = { version = "1.19.2", features = ["rt-multi-thread", "macros","signal","sync","fs"] }
-color-eyre = "0.6.1"
+color-eyre = "0.6.2"
 
 # file system
 notify = "5.0.0-pre.15"
 # async
 hex = "0.4.3"
-nats = { package = "async-nats", version = "0.16.0" }
+nats = { package = "async-nats", version = "0.17.0" }
 singleton = { branch = "master", git = "https://github.com/Itsusinn/singleton-rs.git" }
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls","rustls-tls","socks","gzip"] }
 educe = { version = "0.4.19", default-features = false, features = ["Default"] }
