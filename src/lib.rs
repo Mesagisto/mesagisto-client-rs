@@ -22,6 +22,9 @@ pub mod server;
 
 #[macro_use]
 extern crate singleton;
+#[macro_use]
+extern crate rust_i18n;
+i18n!("locales");
 
 type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
 

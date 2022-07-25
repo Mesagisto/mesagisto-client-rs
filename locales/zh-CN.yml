@@ -1,0 +1,10 @@
+---
+zh-CN:
+  log.connecting: "正在连接到NATS服务器 %{address}"
+  log.connected: "NATS服务器连接成功"
+  log.create-sub: "为目标%{target}创建订阅,地址为:%{address}"
+  log.handle-lib-msg: "正在处理由程序库发出的数据包"
+  log.image-not-found: "无法在本地数据库中找到图片"
+  log.log-callback-err: "NATS消息处理回调发生错误"
+  log.recv-msg: "收到目标${target}的数据包"
+  log.send-request: "正在向%{address}发送Request数据包"

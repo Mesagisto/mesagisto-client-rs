@@ -29,9 +29,9 @@ impl Server {
   pub async fn init(&self, address: &ArcStr) -> Result<()> {
     self.address.init(address.to_owned());
     let client = {
-      info!("Connecting to nats server");
+      info!("{}", t!("log.connecting", address = address));
       let nc = nats::connect(address.to_string()).await?;
-      info!("Connected sucessfully");
+      info!("{}", t!("log.connected"));
       nc
     };
     self.client.init(client);
@@ -118,7 +118,10 @@ impl Server {
     if self.endpoint.contains_key(&target) {
       return Ok(());
     }
-    debug!("Creating sub on {} for {}", address, target);
+    debug!(
+      "{}",
+      t!("log.create-sub", address = &address, target = &target)
+    );
 
     let mut sub = self
       .client
@@ -132,7 +135,8 @@ impl Server {
       while let Some(next) = sub.next().await {
         handle_incoming(next, &target, &handler)
           .await
-          .log_if_error("Err when handing incoming nats message");
+          // .log_if_error("Err when handing incoming nats message");
+          .log_if_error(&t!("log.log-callback-err"));
       }
       async fn handle_incoming<H, Fut>(
         next: nats::Message,
@@ -156,7 +160,7 @@ impl Server {
           None
         };
         if let Some(next) = next {
-          trace!("Received message of target {}", &target);
+          trace!("{}", t!("log.recv-msg", target = &target));
           handler(next, target.clone()).await?;
         };
         Ok(())
@@ -173,7 +177,7 @@ impl Server {
     headers: HeaderMap,
   ) -> Result<nats::Message> {
     let address = self.unique_address(address);
-    trace!("Requesting on {}", address);
+    trace!("{}", t!("log.send-request"));
     let inbox = self.client.new_inbox();
     let mut sub = self
       .client
@@ -205,7 +209,7 @@ impl Server {
   }
 
   async fn handle_lib_message(next: nats::Message) -> Result<()> {
-    debug!("Handling message sent by lib");
+    debug!("{}", t!("log.handle-lib-msg"));
     let packet = Packet::from_cbor(&next.payload)?;
     if packet.is_left() {
       return Ok(());
@@ -218,7 +222,7 @@ impl Server {
         let url = match RES.get_photo_url(&id).await {
           Some(s) => s,
           None => {
-            info!("No image in db");
+            info!("{}", t!("log.image-not-found"));
             return Ok(());
           }
         };

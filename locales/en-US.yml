@@ -1,0 +1,10 @@
+---
+en-US:
+  log.connecting: "Connecting to NATS server %{address}"
+  log.connected: "NATS server connection successful"
+  log.create-sub: "Create subscription for target %{target} with address:%{address}"
+  log.handle-lib-msg: "Processing packets sent by the library"
+  log.image-not-found: "Unable to find image in local database"
+  log.log-callback-err: "NATS message processing callback error occurred"
+  log.recv-msg: "Packet received from target ${target}"
+  log.send-request: "Sending Request packet to %{address}"
