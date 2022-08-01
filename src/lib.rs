@@ -3,6 +3,7 @@ use arcstr::ArcStr;
 use cache::CACHE;
 use cipher::CIPHER;
 use color_eyre::eyre::Result;
+use dashmap::DashMap;
 use db::DB;
 use educe::Educe;
 use futures::future::BoxFuture;
@@ -17,6 +18,7 @@ pub mod data;
 pub mod db;
 pub mod error;
 pub mod net;
+mod pool;
 pub mod res;
 pub mod server;
 
@@ -37,8 +39,10 @@ pub struct MesagistoConfig {
   pub name: ArcStr,
   pub proxy: Option<ArcStr>,
   pub cipher_key: ArcStr,
-  #[educe(Default = "nats://itsusinn.site:4222")]
+  #[educe(Default = "nats://nats.mesagisto.org:4222")]
   pub nats_address: ArcStr,
+
+  pub nats_pool: DashMap<ArcStr, ArcStr>,
   pub photo_url_resolver: Option<Box<Handler>>,
 }
 impl MesagistoConfig {
@@ -206,7 +210,7 @@ impl<T> LogResultExt<T> for color_eyre::eyre::Result<T> {
       Ok(v) => Some(v),
       Err(e) => {
         tracing::error!(
-          "{}, ErrorType {}\nBacktrace {:#?}",
+          "{}, ErrorType {} Backtrace {:#?}",
           message,
           e,
           e.backtrace()
