@@ -17,16 +17,18 @@ type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sy
 #[derive(Singleton, Default)]
 pub struct Res {
   pub directory: LateInit<PathBuf>,
-  pub handlers: LateInit<DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>>,
+  pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
   pub photo_url_resolver: LateInit<Box<Handler>>,
 }
 impl Res {
   async fn poll(&self) -> notify::Result<()> {
     let (tx, mut rx) = channel(32);
     let mut watcher = RecommendedWatcher::new(move |res| {
-      smol::block_on(async {
-        tx.send(res).await.unwrap();
-      });
+      let tx_clone = tx.clone();
+      smol::spawn(async move {
+        tx_clone.send(res).await.unwrap();
+      })
+      .detach();
     })?;
     watcher.watch(self.directory.as_path(), RecursiveMode::NonRecursive)?;
     while let Some(res) = rx.recv().await {
@@ -52,15 +54,16 @@ impl Res {
           paths,
           ..
         }) => {
-          for filename in paths
-            .iter()
-            .filter_map(|path| path.file_name().map(|str| ArcStr::from(str.to_string_lossy())))
-          {
+          for filename in paths.iter().filter_map(|path| {
+            path
+              .file_name()
+              .map(|str| ArcStr::from(str.to_string_lossy()))
+          }) {
             error!("Resource watch error: file deleted name:{}", filename);
             self.handlers.remove(&filename);
           }
         }
-        Err(e) => error!("watch error: {:?}", e),
+        Err(e) => error!("Resource watch error: {:?}", e),
         _ => {}
       }
     }
@@ -98,7 +101,6 @@ impl Res {
     };
     tokio::fs::create_dir_all(path.as_path()).await.unwrap();
     self.directory.init(path);
-    self.handlers.init(DashMap::default());
     tokio::spawn(async { RES.poll().await });
   }
 
@@ -131,18 +133,9 @@ impl Res {
   }
 }
 
-#[cfg(test)]
-mod test {
-  #[test]
-  fn test() {
-    use super::RES;
-    tokio::runtime::Builder::new_multi_thread()
-      .worker_threads(8)
-      .enable_all()
-      .build()
-      .unwrap()
-      .block_on(async {
-        RES.init().await;
-      });
-  }
-}
+// #[cfg(test)]
+// mod test {
+//   #[test]
+//   fn test() {
+//   }
+// }
