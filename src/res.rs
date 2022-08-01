@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
@@ -31,20 +31,37 @@ impl Res {
     watcher.watch(self.directory.as_path(), RecursiveMode::NonRecursive)?;
     while let Some(res) = rx.recv().await {
       match res {
-        Ok(Event { kind, paths, .. }) => {
-          if let EventKind::Create(notify::event::CreateKind::File) = kind {
-            for path in paths {
-              let file_name = ArcStr::from(path.file_name().unwrap().to_string_lossy());
-              if self.handlers.contains_key(&file_name) {
-                let (.., handler_list) = self.handlers.remove(&file_name).unwrap();
-                for handler in handler_list {
-                  handler.send(path.clone()).unwrap();
+        Ok(Event {
+          kind: EventKind::Create(_),
+          paths,
+          ..
+        }) => {
+          for path in paths {
+            let file_name = ArcStr::from(path.file_name().unwrap().to_string_lossy());
+            if let Some((.., handler_list)) = self.handlers.remove(&file_name) {
+              for handler in handler_list {
+                if let Err(_) = handler.send(path.clone()) {
+                  error!("Send a path to a closed handler")
                 }
               }
             }
           }
         }
+        Ok(Event {
+          kind: EventKind::Remove(_),
+          paths,
+          ..
+        }) => {
+          for filename in paths
+            .iter()
+            .filter_map(|path| path.file_name().map(|str| ArcStr::from(str.to_string_lossy())))
+          {
+            error!("Resource watch error: file deleted name:{}", filename);
+            self.handlers.remove(&filename);
+          }
+        }
         Err(e) => error!("watch error: {:?}", e),
+        _ => {}
       }
     }
     Ok(())
@@ -62,14 +79,15 @@ impl Res {
     path
   }
 
-  pub fn wait_for(&self, id: &ArcStr) -> oneshot::Receiver<PathBuf> {
+  pub async fn wait_for(&self, id: &ArcStr) -> Result<PathBuf> {
     let (sender, receiver) = oneshot::channel();
     self
       .handlers
       .entry(id.clone())
       .or_insert(Vec::new())
       .push(sender);
-    receiver
+    let path = tokio::time::timeout(Duration::from_secs_f32(5.0), receiver).await??;
+    Ok(path)
   }
 
   pub async fn init(&self) {

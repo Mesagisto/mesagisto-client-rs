@@ -70,9 +70,7 @@ impl Cache {
 
     let tmp_path = RES.tmp_path(&id_str);
     if tmp_path.exists() {
-      let fut = RES.wait_for(&id_str);
-      let path = tokio::time::timeout(std::time::Duration::from_secs(5), fut).await??;
-      Ok(path)
+      Ok(RES.wait_for(&id_str).await?)
     } else {
       // fixme error handling
       NET.download(url, &tmp_path).await?;
