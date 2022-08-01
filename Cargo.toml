@@ -13,7 +13,7 @@ load-path = "locales"
 once_cell = "1.13.0"
 lateinit = { branch = "master", git = "https://github.com/Itsusinn/lateinit-rs.git" }
 smol = "1.2.5"
-tracing = "0.1.35"
+tracing = "0.1.36"
 aes-gcm = { version = "0.9.4", features = ["std"] }
 
 rust-i18n = { branch = "main", git = "https://github.com/Itsusinn/rust-i18n.git"}
@@ -23,18 +23,18 @@ rand = "0.8.5"
 
 futures = "0.3.21"
 base64-url = "1.4.13"
-serde = "1.0.139"
+serde = "1.0.140"
 serde_cbor = "0.11.2"
 serde_bytes = "0.11.6"
 
 arcstr = { version = "1.1.4", features = ["serde"] }
-bytes = { version = "1.1.0", features = ["serde"] }
+bytes = { version = "1.2.0", features = ["serde"] }
 
 sha2 = "0.10.2"
 either = "1.7.0"
 generic-array = "0.14.5"
 typenum = "1.15.0"
-tokio = { version = "1.19.2", features = ["rt-multi-thread", "macros","signal","sync","fs"] }
+tokio = { version = "1.20.1", features = ["rt-multi-thread", "macros","signal","sync","fs"] }
 color-eyre = "0.6.2"
 
 # file system
