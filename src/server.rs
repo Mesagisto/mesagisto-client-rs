@@ -1,4 +1,4 @@
-use std::future::Future;
+use std::{future::Future, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::{eyre, Result};
@@ -8,7 +8,7 @@ use lateinit::LateInit;
 use nats::{header::HeaderMap, Client, HeaderValue};
 use rand::prelude::random;
 use tokio::task::JoinHandle;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, instrument, trace};
 
 use crate::{
   cipher::CIPHER,
@@ -16,7 +16,7 @@ use crate::{
   EitherExt, LogResultExt,
 };
 
-#[derive(Singleton, Default)]
+#[derive(Singleton, Default, Debug)]
 pub struct Server {
   pub client: LateInit<Client>,
   pub address: LateInit<ArcStr>,
@@ -76,6 +76,7 @@ impl Server {
       .clone()
   }
 
+  #[instrument(skip(self, content))]
   pub async fn send(
     &self,
     target: &ArcStr,
@@ -133,11 +134,21 @@ impl Server {
     // logic
     let join = tokio::spawn(async move {
       while let Some(next) = sub.next().await {
-        handle_incoming(next, &target, &handler)
-          .await
-          // .log_if_error("Err when handing incoming nats message");
-          .log_if_error(&t!("log.log-callback-err"));
+        let res = tokio::time::timeout(
+          Duration::from_secs_f32(5.0),
+          handle_incoming(next, &target, &handler),
+        )
+        .await;
+        match res {
+          Ok(v) => {
+            v.log_if_error(&t!("log.log-callback-err"));
+          }
+          Err(_) => {
+            error!("{}", t!("log.log-callback-timeout"));
+          }
+        };
       }
+      #[instrument(skip(next, handler))]
       async fn handle_incoming<H, Fut>(
         next: nats::Message,
         target: &ArcStr,
@@ -151,7 +162,7 @@ impl Server {
           if !meta.is_not_self(target) {
             None
           } else if meta.is_remote_lib(*SERVER.cid) {
-            Server::handle_lib_message(next).await?;
+            Server::handle_lib_pkt(next).await?;
             None
           } else {
             Some(next)
@@ -160,7 +171,7 @@ impl Server {
           None
         };
         if let Some(next) = next {
-          trace!("{}", t!("log.recv-msg", target = &target));
+          trace!("{}", t!("log.invoke-handler", target = &target));
           handler(next, target.clone()).await?;
         };
         Ok(())
@@ -208,7 +219,7 @@ impl Server {
     }
   }
 
-  async fn handle_lib_message(next: nats::Message) -> Result<()> {
+  async fn handle_lib_pkt(next: nats::Message) -> Result<()> {
     debug!("{}", t!("log.handle-lib-msg"));
     let packet = Packet::from_cbor(&next.payload)?;
     if packet.is_left() {

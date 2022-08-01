@@ -21,6 +21,8 @@ pub mod res;
 pub mod server;
 
 #[macro_use]
+extern crate tracing;
+#[macro_use]
 extern crate singleton;
 #[macro_use]
 extern crate rust_i18n;

@@ -6,5 +6,6 @@ en-US:
   log.handle-lib-msg: "Processing packets sent by the library"
   log.image-not-found: "Unable to find image in local database"
   log.log-callback-err: "NATS message processing callback error occurred"
-  log.recv-msg: "Packet received from target ${target}"
+  log.log-callback-timeout: "NATS message processing callback timeout"
+  log.invoke-handler: "Packet received from target ${target}, deliver it to callback"
   log.send-request: "Sending Request packet to %{address}"
