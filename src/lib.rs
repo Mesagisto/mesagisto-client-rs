@@ -53,7 +53,7 @@ impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {
     DB.init(self.name.some());
     CACHE.init();
-    CIPHER.init(&self.cipher_key);
+    CIPHER.init(&self.cipher_key)?;
     RES.init().await;
     RES
       .photo_url_resolver

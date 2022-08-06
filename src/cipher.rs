@@ -1,15 +1,19 @@
 use std::ops::Deref;
 
-use aes_gcm::{aead::generic_array::GenericArray, aes::Aes256, AesGcm};
+use aes_gcm::{
+  aead::generic_array::GenericArray, aes::Aes256, Aes256Gcm, AesGcm, KeyInit, KeySizeUser,
+};
 use arcstr::ArcStr;
+use color_eyre::eyre::Result;
 use lateinit::LateInit;
-use typenum::{UInt, UTerm, B0, B1, U12};
+use typenum::U12;
 
-type Key = GenericArray<u8, UInt<UInt<UInt<UInt<UInt<UInt<UTerm, B1>, B0>, B0>, B0>, B0>, B0>>;
+pub type Key<B> = GenericArray<u8, <B as KeySizeUser>::KeySize>;
+
 #[derive(Singleton, Default)]
 pub struct Cipher {
   inner: LateInit<AesGcm<Aes256, U12>>,
-  pub key: LateInit<Key>,
+  pub key: LateInit<Key<Aes256Gcm>>,
   pub origin_key: LateInit<ArcStr>,
 }
 
@@ -22,7 +26,7 @@ impl Deref for Cipher {
 }
 
 impl Cipher {
-  pub fn init(&self, key: &ArcStr) {
+  pub fn init(&self, key: &ArcStr) -> Result<()> {
     let hash_key = {
       use sha2::{Digest, Sha256};
       self.origin_key.init(key.to_owned());
@@ -31,12 +35,9 @@ impl Cipher {
       hasher.finalize()
     };
     self.key.init(hash_key);
-    let cipher = {
-      use aes_gcm::{aead::NewAead, Aes256Gcm};
-      let key = aes_gcm::Key::from_slice(self.key.as_slice());
-      Aes256Gcm::new(key)
-    };
+    let cipher = Aes256Gcm::new_from_slice(self.key.as_slice())?;
     self.inner.init(cipher);
+    Ok(())
   }
 
   pub fn new_nonce(&self) -> [u8; 12] {

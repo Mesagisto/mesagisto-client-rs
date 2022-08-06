@@ -14,7 +14,7 @@ once_cell = "1.13.0"
 lateinit = { branch = "master", git = "https://github.com/Itsusinn/lateinit-rs.git" }
 smol = "1.2.5"
 tracing = "0.1.36"
-aes-gcm = { version = "0.9.4", features = ["std"] }
+aes-gcm = { version = "0.10.1", features = ["std"] }
 
 rust-i18n = { branch = "main", git = "https://github.com/Itsusinn/rust-i18n.git"}
 
