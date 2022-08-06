@@ -89,7 +89,7 @@ impl Res {
       .entry(id.clone())
       .or_insert(Vec::new())
       .push(sender);
-    let path = tokio::time::timeout(Duration::from_secs_f32(5.0), receiver).await??;
+    let path = tokio::time::timeout(Duration::from_secs_f32(13.0), receiver).await??;
     Ok(path)
   }
 

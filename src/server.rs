@@ -135,7 +135,7 @@ impl Server {
     let join = tokio::spawn(async move {
       while let Some(next) = sub.next().await {
         let res = tokio::time::timeout(
-          Duration::from_secs_f32(5.0),
+          Duration::from_secs_f32(13.0),
           handle_incoming(next, &target, &handler),
         )
         .await;
