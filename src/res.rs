@@ -49,20 +49,22 @@ impl Res {
             }
           }
         }
-        Ok(Event {
-          kind: EventKind::Remove(_),
-          paths,
-          ..
-        }) => {
-          for filename in paths.iter().filter_map(|path| {
-            path
-              .file_name()
-              .map(|str| ArcStr::from(str.to_string_lossy()))
-          }) {
-            error!("Resource watch error: file deleted name:{}", filename);
-            self.handlers.remove(&filename);
-          }
-        }
+        // Ok(Event {
+        //   kind: EventKind::Remove(_),
+        //   paths,
+        //   ..
+        // }) => {
+        //   for filename in paths.iter().filter_map(|path| {
+        //     path
+        //       .file_name()
+        //       .map(|str| ArcStr::from(str.to_string_lossy()))
+        //   }) {
+        //     if self.handlers.contains_key(&filename) {
+        //       error!("Resource watch error: file deleted name:{}", filename);
+        //       self.handlers.remove(&filename);
+        //     }
+        //   }
+        // }
         Err(e) => error!("Resource watch error: {:?}", e),
         _ => {}
       }
