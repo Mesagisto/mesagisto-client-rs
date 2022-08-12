@@ -44,11 +44,15 @@ impl Packet {
     let bytes = match data {
       Either::Left(m) => {
         ty = "message";
-        serde_cbor::to_vec(&m)?
+        let mut data = Vec::new();
+        ciborium::ser::into_writer(&m, &mut data)?;
+        data
       }
       Either::Right(e) => {
         ty = "event";
-        serde_cbor::to_vec(&e)?
+        let mut data = Vec::new();
+        ciborium::ser::into_writer(&e, &mut data)?;
+        data
       }
     };
     let ciphertext = CIPHER.encrypt(nonce, bytes.as_ref())?;
@@ -62,14 +66,15 @@ impl Packet {
   }
 
   pub fn from_cbor(data: &[u8]) -> Result<Either<message::Message, Event>> {
-    let packet: Packet = serde_cbor::from_slice(data)?;
+    let packet: Packet = ciborium::de::from_reader(data)?;
     let nonce = aes_gcm::Nonce::from_slice(&packet.encrypt);
     let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
     match packet.r#type.as_str() {
-      "message" => serde_cbor::from_slice::<Message>(&plaintext)?
+  pub fn decrypt(&self) -> Result<Either<message::Message, Event>> {
+      "message" => ciborium::de::from_reader::<Message, &[u8]>(&*plaintext)?
         .to_left()
         .ok(),
-      "event" => serde_cbor::from_slice::<Event>(&plaintext)?.to_right().ok(),
+      "event" => ciborium::de::from_reader::<Event, &[u8]>(&plaintext)?
       &_ => unreachable!(),
     }
   }
@@ -116,7 +121,7 @@ mod test {
       ],
     };
     let packet = Packet::encrypt_from(message.to_left()).unwrap();
-    let cbor_packet = serde_cbor::to_vec(&packet).unwrap();
+
     println!("{}", hex::encode(&cbor_packet));
     let packet2 = Packet::from_cbor(&cbor_packet);
     assert!(packet2.is_ok());
