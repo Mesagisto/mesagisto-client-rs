@@ -12,13 +12,13 @@ use tracing::error;
 
 use crate::{db::DB, OptionExt};
 
-type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
+pub trait PhotoHandler = Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
 
 #[derive(Singleton, Default)]
 pub struct Res {
   pub directory: LateInit<PathBuf>,
   pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
-  pub photo_url_resolver: LateInit<Box<Handler>>,
+  pub photo_url_resolver: LateInit<Box<dyn PhotoHandler>>,
 }
 impl Res {
   async fn poll(&self) -> notify::Result<()> {
@@ -42,7 +42,7 @@ impl Res {
             let file_name = ArcStr::from(path.file_name().unwrap().to_string_lossy());
             if let Some((.., handler_list)) = self.handlers.remove(&file_name) {
               for handler in handler_list {
-                if let Err(_) = handler.send(path.clone()) {
+                if handler.send(path.clone()).is_err() {
                   error!("Send a path to a closed handler")
                 }
               }
@@ -114,10 +114,7 @@ impl Res {
     DB.put_image_id(uid, file_id);
   }
 
-  pub fn resolve_photo_url<F>(&self, f: F)
-  where
-    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static,
-  {
+  pub fn resolve_photo_url<F: PhotoHandler>(&self, f: F) {
     let h = Box::new(f);
     self.photo_url_resolver.init(h);
   }

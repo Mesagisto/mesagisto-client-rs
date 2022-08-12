@@ -181,25 +181,3 @@ pub trait EitherExt<A> {
   }
 }
 impl<T, A> EitherExt<A> for T {}
-
-pub trait LogResultExt<T> {
-  fn log_if_error(self, message: &str) -> Option<T>;
-}
-
-impl<T> LogResultExt<T> for color_eyre::eyre::Result<T> {
-  #[inline(always)]
-  fn log_if_error(self, message: &str) -> Option<T> {
-    match self {
-      Ok(v) => Some(v),
-      Err(e) => {
-        tracing::error!(
-          "{}, ErrorType {} Backtrace {:#?}",
-          message,
-          e,
-          e.backtrace()
-        );
-        None
-      }
-    }
-  }
-}

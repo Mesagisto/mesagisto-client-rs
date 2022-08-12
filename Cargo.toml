@@ -20,18 +20,22 @@ rust-i18n = { branch = "main", git = "https://github.com/Itsusinn/rust-i18n.git"
 
 dashmap = { version = "5.3.4", features = ["serde"] }
 rand = "0.8.5"
+uuid = { version = "*", features = ["v4", "v5","serde"]}
 
 futures = "0.3.21"
 base64-url = "1.4.13"
 url = "2.2.2"
 trust-dns-resolver = "0.21.2"
+
+derive_builder = "0.11.2"
+
 # serde
 serde = { version = "1.0.140", features = ["rc"]}
 ciborium = "0.2.0"
 serde_bytes = "0.11.6"
 
 arcstr = { version = "1.1.4", features = ["serde"] }
-bytes = { version = "1.2.0", features = ["serde"] }
+bytes = { version = "1.2.1", features = ["serde"] }
 
 sha2 = "0.10.2"
 either = "1.7.0"
@@ -46,8 +50,17 @@ notify = "5.0.0-pre.15"
 hex = "0.4.3"
 singleton = { branch = "master", git = "https://github.com/Itsusinn/singleton-rs.git" }
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls","rustls-tls","socks","gzip"] }
-educe = { version = "0.4.19", default-features = false, features = ["Default"] }
+educe = { version = "0.4.19", default-features = false, features = ["Default","Debug"] }
 sled = "0.34.7"
 
 # net
 quinn = { version = "0.8.3" }
+
+# tls
+rustls = { version = "0.20.6", features = ["quic"] }
+rustls-pemfile = "1.0.1"
+
+[build-dependencies]
+anyhow = "1.0.58"
+fs_extra = "1.2.0"
+glob = "0.3.0"
