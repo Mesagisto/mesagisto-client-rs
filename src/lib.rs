@@ -1,16 +1,24 @@
-#![feature(fn_traits, trait_alias, backtrace)]
+#![feature(fn_traits, trait_alias, backtrace, box_syntax)]
+use std::{
+  collections::HashMap,
+  fmt::{Debug, Display},
+  ops::ControlFlow,
+  sync::Arc,
+};
+
 use arcstr::ArcStr;
 use cache::CACHE;
 use cipher::CIPHER;
 use color_eyre::eyre::Result;
-use dashmap::DashMap;
+use data::Packet;
 use db::DB;
 use educe::Educe;
 use futures::future::BoxFuture;
 use net::NET;
-use res::RES;
-use server::SERVER;
+use res::{PhotoHandler, RES};
+use server::{PacketHandler, SERVER};
 use sled::IVec;
+use uuid::Uuid;
 
 pub mod cache;
 pub mod cipher;
@@ -18,9 +26,10 @@ pub mod data;
 pub mod db;
 pub mod error;
 pub mod net;
-mod pool;
+pub mod quic;
 pub mod res;
 pub mod server;
+pub mod tls;
 
 #[macro_use]
 extern crate tracing;
@@ -28,112 +37,86 @@ extern crate tracing;
 extern crate singleton;
 #[macro_use]
 extern crate rust_i18n;
+#[macro_use]
+extern crate derive_builder;
+
 i18n!("locales");
 
-type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
+const NAMESPACE_MSGIST: Uuid = Uuid::from_u128(31393687336353710967693806936293091922);
 
-#[derive(Educe)]
-#[educe(Default)]
+#[cfg(test)]
+#[test]
+fn test_uuid() {
+  assert_eq!(
+    "179e3449-c41f-4a57-a763-59a787efaa52",
+    NAMESPACE_MSGIST.to_string()
+  );
+  println!("{}",Uuid::new_v5(&NAMESPACE_MSGIST, "test".as_bytes()).to_string());
+}
+
+#[derive(Educe, Builder)]
+#[educe(Default, Debug)]
+#[builder(setter(into))]
 pub struct MesagistoConfig {
   #[educe(Default = "default")]
   pub name: ArcStr,
   pub proxy: Option<ArcStr>,
   pub cipher_key: ArcStr,
-  #[educe(Default = "nats://nats.mesagisto.org:4222")]
-  pub nats_address: ArcStr,
-
-  pub nats_pool: DashMap<ArcStr, ArcStr>,
-  pub photo_url_resolver: Option<Box<Handler>>,
+  #[educe(Default = "127.0.0.1:0")]
+  pub local_address: String,
+  pub remote_address: HashMap<ArcStr, ArcStr>,
 }
 impl MesagistoConfig {
-  pub fn builder() -> MesagistoConfigBuilder {
-    MesagistoConfigBuilder::new()
-  }
-
   pub async fn apply(self) -> Result<()> {
     DB.init(self.name.some());
     CACHE.init();
     CIPHER.init(&self.cipher_key)?;
     RES.init().await;
-    RES
-      .photo_url_resolver
-      .init(self.photo_url_resolver.unwrap());
-    SERVER.init(&self.nats_address).await?;
+    SERVER
+      .init(&self.local_address, self.remote_address)
+      .await?;
     NET.init(self.proxy);
     Ok(())
   }
-}
-#[derive(Default)]
-pub struct MesagistoConfigBuilder {
-  config: MesagistoConfig,
-}
-impl MesagistoConfigBuilder {
-  pub fn new() -> Self {
-    Self::default()
-  }
 
-  pub fn name(mut self, name: impl Into<ArcStr>) -> Self {
-    self.config.name = name.into();
-    self
-  }
-
-  pub fn proxy(mut self, proxy: Option<ArcStr>) -> Self {
-    self.config.proxy = proxy;
-    self
-  }
-
-  pub fn cipher_key(mut self, key: impl Into<ArcStr>) -> Self {
-    self.config.cipher_key = key.into();
-    self
-  }
-
-  pub fn nats_address(mut self, address: impl Into<ArcStr>) -> Self {
-    self.config.nats_address = address.into();
-    self
-  }
-
-  pub fn photo_url_resolver<F>(mut self, resolver: F) -> Self
+  pub fn photo_url_resolver<F>(resolver: F)
   where
     F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static,
   {
     let h = Box::new(resolver);
-    self.config.photo_url_resolver = Some(h);
-    self
+    RES.photo_url_resolver.init(h);
   }
 
-  pub fn build(self) -> MesagistoConfig {
-    self.config
-  }
-}
-
-// R refers to <Return>
-pub trait RunExt<R> {
-  // let is a keyword in rust,so...let's use ret
-  fn run<F: FnOnce(Self) -> R>(self, f: F) -> R
+  pub fn packet_handler<F>(resolver: F)
   where
-    Self: Sized,
+    F: Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static,
   {
-    f(self)
+    let h = Box::new(resolver);
+    SERVER.packet_handler.init(h);
   }
-  // fn run_ref<F: FnOnce(&Self) -> R>(&self, f: F) -> R {
-  //     f(self)
-  // }
-  // fn run_mut<F: FnOnce(&mut Self) -> R>(&mut self, f: F) -> R {
-  //     f(self)
-  // }
 }
-
-impl<T, R> RunExt<R> for T {}
 
 pub trait ResultExt<T, E> {
   fn ignore(self) -> Option<T>;
+  fn log(self) -> Option<T>;
 }
-impl<T, E> ResultExt<T, E> for Result<T, E> {
+impl<T, E: Debug> ResultExt<T, E> for Result<T, E> {
   #[inline]
   fn ignore(self) -> Option<T> {
     match self {
       Ok(v) => Some(v),
       Err(_) => None,
+    }
+  }
+
+  #[inline]
+  fn log(self) -> Option<T> {
+    match self {
+      Ok(v) => Some(v),
+      Err(e) => {
+        error!("{:?}", e);
+        None
+      }
     }
   }
 }
