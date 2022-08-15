@@ -63,6 +63,7 @@ impl Server {
     // FIXME TIMEOUT When server down
     if let Some(remote) = self.remote_endpoints.get(&server.into()) {
       let remote = remote.clone();
+      // FIXME TIMEOUT When server down
       let mut uni = remote.open_uni().await?;
       uni.write(&payload).await?;
       uni.finish().await?;
@@ -101,7 +102,8 @@ impl Server {
     });
     receiver
   }
-  pub async fn respond(&self,mut content: Packet, inbox: Arc<Uuid>, server: ArcStr ) -> Result<()> {
+
+  pub async fn respond(&self, mut content: Packet, inbox: Arc<Uuid>, server: ArcStr) -> Result<()> {
     content.inbox.replace(box Inbox::Respond { id: inbox });
     self.send(content, server).await?;
     Ok(())

@@ -51,7 +51,10 @@ fn test_uuid() {
     "179e3449-c41f-4a57-a763-59a787efaa52",
     NAMESPACE_MSGIST.to_string()
   );
-  println!("{}",Uuid::new_v5(&NAMESPACE_MSGIST, "test".as_bytes()).to_string());
+  println!(
+    "{}",
+    Uuid::new_v5(&NAMESPACE_MSGIST, "test".as_bytes()).to_string()
+  );
 }
 
 #[derive(Educe, Builder)]

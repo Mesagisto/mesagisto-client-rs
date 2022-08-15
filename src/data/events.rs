@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "type")]
+#[serde(tag = "t")]
 #[non_exhaustive]
 pub enum Event {
   RequestImage {

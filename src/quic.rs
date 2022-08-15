@@ -1,7 +1,8 @@
 use std::{
   collections::HashMap,
   net::{SocketAddr, SocketAddrV4, SocketAddrV6},
-  sync::Arc, ops::{Deref, ControlFlow},
+  ops::{ControlFlow, Deref},
+  sync::Arc,
 };
 
 use arcstr::ArcStr;
@@ -13,7 +14,7 @@ use trust_dns_resolver::{
 };
 use url::Host;
 
-use crate::{server, server::SERVER, ResultExt, data::Packet};
+use crate::{data::Packet, server, server::SERVER, ResultExt};
 
 pub async fn init(
   server: &server::Server,
