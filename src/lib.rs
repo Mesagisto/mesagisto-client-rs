@@ -63,7 +63,7 @@ pub struct MesagistoConfig {
   pub cipher_key: ArcStr,
   #[educe(Default = "127.0.0.1:0")]
   pub local_address: String,
-  pub remote_address: HashMap<ArcStr, ArcStr>,
+  pub remote_address: Arc<DashMap<ArcStr, ArcStr>>,
 }
 impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {

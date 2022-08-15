@@ -24,13 +24,18 @@ use crate::{
 pub struct Server {
   pub endpoint: LateInit<quinn::Endpoint>,
   pub remote_endpoints: DashMap<ArcStr, quinn::Connection>,
+  pub remote_address: LateInit<Arc<DashMap<ArcStr, ArcStr>>>,
   pub packet_handler: LateInit<Box<dyn PacketHandler>>,
   pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
   pub room_map: DashMap<ArcStr, Arc<uuid::Uuid>>,
 }
 impl Server {
-  pub async fn init(&self, local: &str, remote: HashMap<ArcStr, ArcStr>) -> Result<()> {
-    crate::quic::init(self, local, remote).await?;
+  pub async fn init(
+    &self,
+    local: &str,
+    remote_address: Arc<DashMap<ArcStr, ArcStr>>,
+  ) -> Result<()> {
+    crate::quic::init(self, local, remote_address).await?;
     Ok(())
   }
 
@@ -58,20 +63,35 @@ impl Server {
     }
   }
 
-  #[instrument(skip(self, content))]
-  pub async fn send(&self, content: Packet, server: impl Into<ArcStr> + Debug) -> Result<()> {
-    let payload = content.to_cbor()?;
-    // FIXME TIMEOUT When server down
-    if let Some(remote) = self.remote_endpoints.get(&server.into()) {
-      let remote = remote.clone();
-      // FIXME TIMEOUT When server down
-      let mut uni = remote.open_uni().await?;
-      uni.write(&payload).await?;
-      uni.finish().await?;
+  pub async fn reconnect(&self, server_name: &ArcStr) -> Result<()> {
+    if let Some(address) = self.remote_address.get(server_name) {
+      tokio::time::sleep(Duration::from_secs(5)).await;
+      quic::connect(self, server_name, &address).await?;
+      Ok(())
     } else {
-      warn!("wtf")
-    };
+      Err(eyre!("Server not exists name {}", server_name))
+    }
+  }
 
+  #[instrument(skip(self, content))]
+  #[async_recursion]
+  pub async fn send(&self, content: Packet, server_name: &ArcStr) -> Result<()> {
+    let payload = content.to_cbor()?;
+    let mut reconnect = false;
+    if let Some(remote) = self.remote_endpoints.get(server_name) {
+      let remote = remote.clone();
+      if let Ok(mut uni) = remote.open_uni().await {
+        uni.write(&payload).await?;
+        uni.finish().await?;
+      } else {
+        reconnect = true;
+      }
+    };
+    if reconnect {
+      info!("reconnecting to {}", server_name);
+      self.reconnect(server_name).await?;
+      self.send(content, server_name).await?;
+    }
     Ok(())
   }
 

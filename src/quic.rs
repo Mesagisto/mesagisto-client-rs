@@ -20,23 +20,21 @@ use crate::{data::Packet, server, server::SERVER, ResultExt};
 pub async fn init(
   server: &server::Server,
   local: &str,
-  remotes: HashMap<ArcStr, ArcStr>,
+  remotes: Arc<DashMap<ArcStr, ArcStr>>,
 ) -> Result<()> {
-  // let local_socket = local.parse::<SocketAddr>()?;
-
   let local_socket = local.parse::<SocketAddr>()?;
   let mut endpoint = quinn::Endpoint::client(local_socket)?;
   endpoint.set_default_client_config(crate::tls::client_config().await?);
   server.endpoint.init(endpoint);
-  for (name, remote) in remotes {
-    connect(server, name, remote).await.log();
+  for entry in remotes.iter() {
+    connect(server, entry.key(), entry.value()).await.log();
   }
   Ok(())
 }
-pub async fn connect(server: &server::Server, name: ArcStr, remote: ArcStr) -> Result<()> {
+pub async fn connect(server: &server::Server, name: &ArcStr, remote: &ArcStr) -> Result<()> {
   let endpoint = &*server.endpoint;
   info!("{}", t!("log.connecting", address = &remote));
-  let remote_url = url::Url::parse(&remote)?;
+  let remote_url = url::Url::parse(remote)?;
 
   if remote_url.scheme() != "msgist" {
     todo!("wrong scheme")
@@ -56,13 +54,19 @@ pub async fn connect(server: &server::Server, name: ArcStr, remote: ArcStr) -> R
     None => todo!(),
   };
   if server_name.is_empty() {
+    // TODO
     server_name = "localhost"
   }
   let new_conn = endpoint.connect(remote_socket, server_name)?.await?;
   info!("{}", t!("log.connected"));
-  server.remote_endpoints.insert(name, new_conn.connection);
+  if let Some(former) = server
+    .remote_endpoints
+    .insert(name.clone(), new_conn.connection)
+  {
+    former.close(VarInt::from_u32(2000), b"conflict");
+  };
   tokio::spawn(async move {
-    receive_uni_stream(new_conn.uni_streams).await.unwrap();
+    receive_uni_stream(new_conn.uni_streams).await.log();
   });
   Ok(())
 }
