@@ -25,7 +25,7 @@ impl Cache {
     id: &Vec<u8>,
     url: &Option<ArcStr>,
     room: Arc<Uuid>,
-    server: ArcStr,
+    server: &ArcStr,
   ) -> Result<PathBuf> {
     match url {
       Some(url) => self.file_by_url(id, url).await,
@@ -37,7 +37,7 @@ impl Cache {
     &self,
     uid: &Vec<u8>,
     room: Arc<Uuid>,
-    server: ArcStr,
+    server: &ArcStr,
   ) -> Result<PathBuf> {
     let uid_str: ArcStr = base64_url::encode(uid).into();
     trace!("Caching file by uid {}", uid_str);

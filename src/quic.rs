@@ -1,5 +1,4 @@
 use std::{
-  collections::HashMap,
   net::{SocketAddr, SocketAddrV4, SocketAddrV6},
   ops::{ControlFlow, Deref},
   sync::Arc,
@@ -7,7 +6,9 @@ use std::{
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
+use dashmap::DashMap;
 use futures::StreamExt;
+use quinn::VarInt;
 use trust_dns_resolver::{
   config::{ResolverConfig, ResolverOpts},
   TokioAsyncResolver,

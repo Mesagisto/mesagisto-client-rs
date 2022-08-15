@@ -1,22 +1,18 @@
-#![feature(fn_traits, trait_alias, backtrace, box_syntax)]
-use std::{
-  collections::HashMap,
-  fmt::{Debug, Display},
-  ops::ControlFlow,
-  sync::Arc,
-};
+#![feature(fn_traits, trait_alias, box_syntax)]
+use std::{fmt::Debug, ops::ControlFlow, sync::Arc};
 
 use arcstr::ArcStr;
 use cache::CACHE;
 use cipher::CIPHER;
 use color_eyre::eyre::Result;
+use dashmap::DashMap;
 use data::Packet;
 use db::DB;
 use educe::Educe;
 use futures::future::BoxFuture;
 use net::NET;
-use res::{PhotoHandler, RES};
-use server::{PacketHandler, SERVER};
+use res::RES;
+use server::SERVER;
 use sled::IVec;
 use uuid::Uuid;
 

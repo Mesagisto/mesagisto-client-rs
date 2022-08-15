@@ -5,7 +5,7 @@ use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{inotify, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
 use tokio::sync::{mpsc::channel, oneshot};
 use tracing::error;
@@ -23,13 +23,16 @@ pub struct Res {
 impl Res {
   async fn poll(&self) -> notify::Result<()> {
     let (tx, mut rx) = channel(32);
-    let mut watcher = RecommendedWatcher::new(move |res| {
-      let tx_clone = tx.clone();
-      smol::spawn(async move {
-        tx_clone.send(res).await.unwrap();
-      })
-      .detach();
-    })?;
+    let mut watcher = RecommendedWatcher::new(
+      move |res| {
+        let tx_clone = tx.clone();
+        smol::spawn(async move {
+          tx_clone.send(res).await.unwrap();
+        })
+        .detach();
+      },
+      notify::Config::default().with_poll_interval(Duration::from_secs(5)),
+    )?;
     watcher.watch(self.directory.as_path(), RecursiveMode::NonRecursive)?;
     while let Some(res) = rx.recv().await {
       match res {

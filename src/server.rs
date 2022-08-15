@@ -1,7 +1,8 @@
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{sync::Arc, time::Duration};
 
 use arcstr::ArcStr;
-use color_eyre::eyre::Result;
+use async_recursion::async_recursion;
+use color_eyre::eyre::{eyre, Result};
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
@@ -9,7 +10,7 @@ use tokio::sync::oneshot;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::ResultExt;
+use crate::{quic, EitherExt, ResultExt};
 
 pub trait PacketHandler =
   Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static;
@@ -75,21 +76,21 @@ impl Server {
   }
 
   #[instrument(skip(self))]
-  pub async fn sub(&self, room: Arc<Uuid>, server: impl Into<ArcStr> + Debug) -> Result<()> {
+  pub async fn sub(&self, room: Arc<Uuid>, server: &ArcStr) -> Result<()> {
     let pkt = Packet::new_sub(room);
     self.send(pkt, server).await?;
     Ok(())
   }
 
   #[instrument(skip(self))]
-  pub async fn unsub(&self, room: Arc<Uuid>, server: impl Into<ArcStr> + Debug) -> Result<()> {
+  pub async fn unsub(&self, room: Arc<Uuid>, server: &ArcStr) -> Result<()> {
     let pkt = Packet::new_unsub(room);
     self.send(pkt, server).await?;
     Ok(())
   }
 
   #[must_use]
-  pub fn request(&self, mut content: Packet, server: ArcStr) -> oneshot::Receiver<Packet> {
+  pub fn request(&self, mut content: Packet, server: &ArcStr) -> oneshot::Receiver<Packet> {
     if content.inbox.is_none() {
       let inbox = box Inbox::default();
       content.inbox = Some(inbox);
@@ -97,13 +98,19 @@ impl Server {
     let (sender, receiver) = oneshot::channel();
     let id = content.inbox.as_ref().unwrap().id();
     self.inbox.insert(id, sender);
+    let server = server.to_owned();
     tokio::spawn(async move {
-      SERVER.send(content, server).await.log();
+      SERVER.send(content, &server).await.log();
     });
     receiver
   }
 
-  pub async fn respond(&self, mut content: Packet, inbox: Arc<Uuid>, server: ArcStr) -> Result<()> {
+  pub async fn respond(
+    &self,
+    mut content: Packet,
+    inbox: Arc<Uuid>,
+    server: &ArcStr,
+  ) -> Result<()> {
     content.inbox.replace(box Inbox::Respond { id: inbox });
     self.send(content, server).await?;
     Ok(())
