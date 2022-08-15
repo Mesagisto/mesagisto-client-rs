@@ -1,7 +1,7 @@
-use std::io::BufReader;
+use std::{io::BufReader, sync::Arc};
 
 use color_eyre::eyre::Result;
-use quinn::ClientConfig;
+use quinn::{ClientConfig, IdleTimeout, TransportConfig, VarInt};
 use rustls::RootCertStore;
 
 pub fn read_certs_from_file() -> Result<Vec<rustls::Certificate>> {
@@ -23,11 +23,26 @@ pub async fn client_config() -> Result<ClientConfig> {
       for cert in certs {
         cert_store.add(&cert)?;
       }
+      match rustls_native_certs::load_native_certs() {
+        Ok(certs) => {
+          for cert in certs {
+            if let Err(e) = cert_store.add(&rustls::Certificate(cert.0)) {
+              tracing::warn!("failed to parse trust anchor: {}", e);
+            }
+          }
+        }
+        Err(e) => {
+          tracing::warn!("couldn't load any default trust roots: {}", e);
+        }
+      };
       Ok(cert_store)
     }
     inner()
   })
   .await??;
-  let client_config = quinn::ClientConfig::with_root_certificates(cert_store);
+  let mut client_config = quinn::ClientConfig::with_root_certificates(cert_store);
+  let mut transport = TransportConfig::default();
+  transport.max_idle_timeout(Some(IdleTimeout::from(VarInt::from_u32(15_000))));
+  client_config.transport = Arc::new(transport);
   Ok(client_config)
 }

@@ -1312,6 +1312,7 @@ dependencies = [
  "reqwest",
  "rust-i18n",
  "rustls",
+ "rustls-native-certs",
  "rustls-pemfile 1.0.1",
  "serde",
  "serde_bytes",

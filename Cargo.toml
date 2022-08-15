@@ -59,6 +59,7 @@ quinn = { version = "0.8.3" }
 # tls
 rustls = { version = "0.20.6", features = ["quic"] }
 rustls-pemfile = "1.0.1"
+rustls-native-certs = "0.6.2"
 
 [build-dependencies]
 anyhow = "1.0.58"

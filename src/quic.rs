@@ -39,6 +39,7 @@ pub async fn connect(server: &server::Server, name: ArcStr, remote: ArcStr) -> R
   if remote_url.scheme() != "msgist" {
     todo!("wrong scheme")
   }
+  let mut server_name: &str = "";
   let resolver =
     TokioAsyncResolver::tokio(ResolverConfig::default(), ResolverOpts::default()).unwrap();
   let remote_socket: SocketAddr = match remote_url.host() {
@@ -47,23 +48,19 @@ pub async fn connect(server: &server::Server, name: ArcStr, remote: ArcStr) -> R
     Some(Host::Domain(v)) => {
       let response = resolver.lookup_ip(v).await?;
       let ip = response.iter().next().unwrap();
+      server_name = v;
       SocketAddr::new(ip, remote_url.port().unwrap_or(6996))
     }
     None => todo!(),
   };
-  let new_conn = endpoint
-    .connect(
-      remote_socket,
-      // remote_url.host_str().unwrap_or_else(|| "localhost"),
-      "localhost", // FIXME
-    )?
-    .await?;
+  if server_name.is_empty() {
+    server_name = "localhost"
+  }
+  let new_conn = endpoint.connect(remote_socket, server_name)?.await?;
   info!("{}", t!("log.connected"));
   server.remote_endpoints.insert(name, new_conn.connection);
   tokio::spawn(async move {
-      receive_uni_stream(new_conn.uni_streams)
-      .await
-      .unwrap();
+    receive_uni_stream(new_conn.uni_streams).await.unwrap();
   });
   Ok(())
 }
