@@ -1,8 +1,8 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 use arcstr::ArcStr;
 use async_recursion::async_recursion;
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
@@ -10,7 +10,7 @@ use tokio::sync::oneshot;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{quic, EitherExt, ResultExt};
+use crate::{quic, ResultExt};
 
 pub trait PacketHandler =
   Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static;
@@ -28,6 +28,7 @@ pub struct Server {
   pub packet_handler: LateInit<Box<dyn PacketHandler>>,
   pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
   pub room_map: DashMap<ArcStr, Arc<uuid::Uuid>>,
+  pub subs: DashMap<ArcStr, HashSet<Arc<Uuid>>>,
 }
 impl Server {
   pub async fn init(
@@ -35,7 +36,8 @@ impl Server {
     local: &str,
     remote_address: Arc<DashMap<ArcStr, ArcStr>>,
   ) -> Result<()> {
-    crate::quic::init(self, local, remote_address).await?;
+    self.remote_address.init(remote_address);
+    crate::quic::init(self, local).await?;
     Ok(())
   }
 
@@ -63,54 +65,72 @@ impl Server {
     }
   }
 
-  pub async fn reconnect(&self, server_name: &ArcStr) -> Result<()> {
-    if let Some(address) = self.remote_address.get(server_name) {
-      tokio::time::sleep(Duration::from_secs(5)).await;
-      quic::connect(self, server_name, &address).await?;
-      Ok(())
-    } else {
-      Err(eyre!("Server not exists name {}", server_name))
-    }
-  }
-
-  #[instrument(skip(self, content))]
   #[async_recursion]
   pub async fn send(&self, content: Packet, server_name: &ArcStr) -> Result<()> {
     let payload = content.to_cbor()?;
-    let mut reconnect = false;
+    let mut reconnect = true;
     if let Some(remote) = self.remote_endpoints.get(server_name) {
       let remote = remote.clone();
-      if let Ok(mut uni) = remote.open_uni().await {
-        uni.write(&payload).await?;
-        uni.finish().await?;
-      } else {
-        reconnect = true;
+      if let Some(mut uni) = match remote.open_uni().await  {
+        Ok(v) => {
+          reconnect = false;
+          Some(v)
+        },
+        Err(quinn::ConnectionError::ApplicationClosed(e)) => {
+          if e.error_code == quinn::VarInt::from_u32(2000) {
+            reconnect = false;
+          }
+          None
+        }
+        Err(_) => {
+          None
+        },
       }
+      && let Ok(_) = uni.write(&payload).await
+      && let Ok(_) = uni.finish().await {
+        reconnect = false;
+      }
+    } else {
+      reconnect = true;
     };
     if reconnect {
       info!("reconnecting to {}", server_name);
-      self.reconnect(server_name).await?;
+      quic::connect(self, server_name).await?;
       self.send(content, server_name).await?;
     }
     Ok(())
   }
 
   #[instrument(skip(self))]
-  pub async fn sub(&self, room: Arc<Uuid>, server: &ArcStr) -> Result<()> {
-    let pkt = Packet::new_sub(room);
-    self.send(pkt, server).await?;
+  pub async fn sub(&self, room_id: Arc<Uuid>, server_name: &ArcStr) -> Result<()> {
+    let mut entry = self
+      .subs
+      .entry(server_name.to_owned())
+      .or_insert_with(Default::default);
+    entry.insert(room_id.clone());
+    entry.shrink_to_fit();
+    drop(entry);
+    let pkt = Packet::new_sub(room_id);
+    self.send(pkt, server_name).await?;
     Ok(())
   }
 
   #[instrument(skip(self))]
   pub async fn unsub(&self, room: Arc<Uuid>, server: &ArcStr) -> Result<()> {
+    let mut entry = self
+      .subs
+      .entry(server.to_owned())
+      .or_insert_with(Default::default);
+    entry.remove(&room);
+    entry.shrink_to_fit();
+    drop(entry);
     let pkt = Packet::new_unsub(room);
     self.send(pkt, server).await?;
     Ok(())
   }
 
   #[must_use]
-  pub fn request(&self, mut content: Packet, server: &ArcStr) -> oneshot::Receiver<Packet> {
+  pub fn request(&self, mut content: Packet, server_name: &ArcStr) -> oneshot::Receiver<Packet> {
     if content.inbox.is_none() {
       let inbox = box Inbox::default();
       content.inbox = Some(inbox);
@@ -118,9 +138,9 @@ impl Server {
     let (sender, receiver) = oneshot::channel();
     let id = content.inbox.as_ref().unwrap().id();
     self.inbox.insert(id, sender);
-    let server = server.to_owned();
+    let server_name = server_name.to_owned();
     tokio::spawn(async move {
-      SERVER.send(content, &server).await.log();
+      SERVER.send(content, &server_name).await.log();
     });
     receiver
   }
