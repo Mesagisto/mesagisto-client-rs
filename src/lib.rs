@@ -13,7 +13,6 @@ use futures::future::BoxFuture;
 use net::NET;
 use res::RES;
 use server::SERVER;
-use sled::IVec;
 use uuid::Uuid;
 
 pub mod cache;
@@ -76,14 +75,6 @@ impl MesagistoConfig {
       .await?;
     NET.init(self.proxy);
     Ok(())
-  }
-
-  pub fn photo_url_resolver<F>(resolver: F)
-  where
-    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static,
-  {
-    let h = Box::new(resolver);
-    RES.photo_url_resolver.init(h);
   }
 
   pub fn packet_handler<F>(resolver: F)

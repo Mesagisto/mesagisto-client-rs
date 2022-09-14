@@ -5,12 +5,12 @@ use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
-use notify::{inotify, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
 use tokio::sync::{mpsc::channel, oneshot};
 use tracing::error;
 
-use crate::{db::DB, OptionExt};
+use crate::{db::DB, ResultExt};
 
 pub trait PhotoHandler = Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
 
@@ -18,7 +18,6 @@ pub trait PhotoHandler = Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Sen
 pub struct Res {
   pub directory: LateInit<PathBuf>,
   pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
-  pub photo_url_resolver: LateInit<Box<dyn PhotoHandler>>,
 }
 impl Res {
   async fn poll(&self) -> notify::Result<()> {
@@ -52,25 +51,23 @@ impl Res {
             }
           }
         }
-        // Ok(Event {
-        //   kind: EventKind::Remove(_),
-        //   paths,
-        //   ..
-        // }) => {
-        //   for filename in paths.iter().filter_map(|path| {
-        //     path
-        //       .file_name()
-        //       .map(|str| ArcStr::from(str.to_string_lossy()))
-        //   }) {
-        //     if self.handlers.contains_key(&filename) {
-        //       error!("Resource watch error: file deleted name:{}", filename);
-        //       self.handlers.remove(&filename);
-        //     }
-        //   }
-        // }
         Err(e) => error!("Resource watch error: {:?}", e),
         _ => {}
       }
+      let mut for_remove = vec![];
+      for entry in &self.handlers {
+        let path = self.path(entry.key());
+        if path.exists() {
+          for_remove.push((entry.key().to_owned(),path));
+        }
+      }
+      for_remove.into_iter().for_each(|v|{
+        if let Some((.., handler_list)) = self.handlers.remove(&v.0) {
+          for handler in handler_list {
+            handler.send(v.1.to_owned()).log();
+          }
+        }
+      });
     }
     Ok(())
   }
@@ -115,23 +112,6 @@ impl Res {
     F: Into<IVec>,
   {
     DB.put_image_id(uid, file_id);
-  }
-
-  pub fn resolve_photo_url<F: PhotoHandler>(&self, f: F) {
-    let h = Box::new(f);
-    self.photo_url_resolver.init(h);
-  }
-
-  pub async fn get_photo_url<T>(&self, uid: T) -> Option<ArcStr>
-  where
-    T: AsRef<[u8]>,
-  {
-    let file_id = DB.get_image_id(&uid)?;
-    let handler = &*self.photo_url_resolver;
-    handler(&(uid.as_ref().to_vec(), file_id))
-      .await
-      .unwrap()
-      .some()
   }
 }
 
