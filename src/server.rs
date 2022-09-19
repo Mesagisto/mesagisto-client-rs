@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use arcstr::ArcStr;
 use async_recursion::async_recursion;
@@ -6,7 +6,7 @@ use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, time::timeout};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -71,7 +71,8 @@ impl Server {
     let mut reconnect = true;
     if let Some(remote) = self.remote_endpoints.get(server_name) {
       let remote = remote.clone();
-      if let Some(mut uni) = match remote.open_uni().await  {
+      if let Ok(uni) = timeout(Duration::from_secs(2), remote.open_uni()).await
+      && let Some(mut uni) = match uni {
         Ok(v) => {
           reconnect = false;
           Some(v)

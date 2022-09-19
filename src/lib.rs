@@ -1,4 +1,5 @@
 #![feature(fn_traits, trait_alias, box_syntax)]
+#![feature(let_chains)]
 use std::{fmt::Debug, ops::ControlFlow, sync::Arc};
 
 use arcstr::ArcStr;

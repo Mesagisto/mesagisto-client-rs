@@ -58,10 +58,10 @@ impl Res {
       for entry in &self.handlers {
         let path = self.path(entry.key());
         if path.exists() {
-          for_remove.push((entry.key().to_owned(),path));
+          for_remove.push((entry.key().to_owned(), path));
         }
       }
-      for_remove.into_iter().for_each(|v|{
+      for_remove.into_iter().for_each(|v| {
         if let Some((.., handler_list)) = self.handlers.remove(&v.0) {
           for handler in handler_list {
             handler.send(v.1.to_owned()).log();
