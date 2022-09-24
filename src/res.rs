@@ -3,14 +3,11 @@ use std::{path::PathBuf, time::Duration};
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
 use dashmap::DashMap;
-use futures::future::BoxFuture;
 use lateinit::LateInit;
 use sled::IVec;
 use tokio::{sync::oneshot, task::JoinHandle};
 
 use crate::{db::DB, ResultExt};
-
-pub trait PhotoHandler = Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
 
 #[derive(Singleton, Default)]
 pub struct Res {
@@ -18,7 +15,7 @@ pub struct Res {
   pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
 }
 impl Res {
-  async fn poll(&self) -> Result<()> {
+  async fn poll(&self) {
     let _: JoinHandle<_> = tokio::spawn(async {
       let mut interval = tokio::time::interval(Duration::from_millis(200));
       loop {
@@ -39,7 +36,6 @@ impl Res {
         interval.tick().await;
       }
     });
-    Ok(())
   }
 
   pub fn path(&self, id: &ArcStr) -> PathBuf {
@@ -84,10 +80,3 @@ impl Res {
     DB.put_image_id(uid, file_id);
   }
 }
-
-// #[cfg(test)]
-// mod test {
-//   #[test]
-//   fn test() {
-//   }
-// }

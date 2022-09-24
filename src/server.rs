@@ -66,10 +66,10 @@ impl Server {
   }
 
   #[async_recursion]
-  pub async fn send(&self, content: Packet, server_name: &ArcStr) -> Result<()> {
+  pub async fn send(&self, content: Packet, server_id: &ArcStr) -> Result<()> {
     let payload = content.to_cbor()?;
     let mut reconnect = true;
-    if let Some(remote) = self.remote_endpoints.get(server_name) {
+    if let Some(remote) = self.remote_endpoints.get(server_id) {
       let remote = remote.clone();
       if let Ok(uni) = timeout(Duration::from_secs(2), remote.open_uni()).await
       && let Some(mut uni) = match uni {
@@ -95,9 +95,9 @@ impl Server {
       reconnect = true;
     };
     if reconnect {
-      info!("reconnecting to {}", server_name);
-      quic::connect(self, server_name).await?;
-      self.send(content, server_name).await?;
+      info!("reconnecting to {}", server_id);
+      quic::connect(self, server_id).await?;
+      self.send(content, server_id).await?;
     }
     Ok(())
   }

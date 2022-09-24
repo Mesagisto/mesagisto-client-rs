@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use self::{events::Event, message::Message};
-use crate::{cipher::CIPHER, EitherExt, OkExt, NAMESPACE_MSGIST};
+use crate::{cipher::CIPHER, EitherExt, OkExt};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Packet {
@@ -44,10 +44,6 @@ pub enum Ctl {
   Sub,
   #[serde(rename = "unsub")]
   Unsub,
-  #[serde(rename = "ping")]
-  Ping,
-  #[serde(rename = "pong")]
-  Pong
 }
 impl Default for Inbox {
   fn default() -> Self {
@@ -75,26 +71,7 @@ impl Packet {
       ctl: Some(Ctl::Sub),
     }
   }
-  pub fn new_ping() -> Self {
-    Self {
-      ty: "ctl".to_string(),
-      content: "[[PING]]".as_bytes().to_vec(),
-      nonce: vec![],
-      room_id: Arc::new(Uuid::new_v5(&NAMESPACE_MSGIST, "__BUS__".as_bytes())),
-      inbox: None,
-      ctl: Some(Ctl::Ping)
-    }
-  }
-  pub fn new_pong() -> Self {
-    Self {
-      ty: "ctl".to_string(),
-      content: "[[PONG]]".as_bytes().to_vec(),
-      nonce: vec![],
-      room_id: Arc::new(Uuid::new_v5(&NAMESPACE_MSGIST, "__BUS__".as_bytes())),
-      inbox: None,
-      ctl: Some(Ctl::Pong)
-    }
-  }
+
   pub fn new_unsub(room: Arc<Uuid>) -> Self {
     Self {
       ty: "ctl".to_string(),

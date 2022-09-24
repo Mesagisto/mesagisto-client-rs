@@ -61,7 +61,7 @@ pub struct MesagistoConfig {
   pub name: ArcStr,
   pub proxy: Option<ArcStr>,
   pub cipher_key: ArcStr,
-  #[educe(Default = "127.0.0.1:0")]
+  #[educe(Default = "0.0.0.0:0")]
   pub local_address: String,
   pub remote_address: Arc<DashMap<ArcStr, ArcStr>>,
 }

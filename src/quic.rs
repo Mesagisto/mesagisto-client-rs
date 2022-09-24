@@ -1,9 +1,11 @@
 use std::{
   net::{SocketAddr, SocketAddrV4, SocketAddrV6},
   ops::{ControlFlow, Deref},
+  time::Duration,
 };
 
 use arcstr::ArcStr;
+use async_recursion::async_recursion;
 use color_eyre::eyre::{eyre, Result};
 use dashmap::mapref::entry::Entry;
 use futures::StreamExt;
@@ -25,10 +27,12 @@ pub async fn init(server: &server::Server, local: &str) -> Result<()> {
   }
   Ok(())
 }
+#[async_recursion]
 pub async fn connect_with_entry(
-  server: &server::Server,
-  remote_address: &ArcStr,
-  remote_endpoint: Entry<'_, ArcStr, quinn::Connection>,
+  server: &'async_recursion server::Server,
+  server_id: &'async_recursion ArcStr,
+  remote_address: &'async_recursion ArcStr,
+  remote_endpoint: Entry<'async_recursion, ArcStr, quinn::Connection>,
 ) -> Result<()> {
   let endpoint = &*server.endpoint;
   info!("{}", t!("log.connecting", address = &remote_address));
@@ -57,31 +61,51 @@ pub async fn connect_with_entry(
   }
   let new_conn = endpoint.connect(remote_socket, server_name)?.await?;
   info!("{}", t!("log.connected"));
-  remote_endpoint.or_insert(new_conn.connection);
+  {
+    remote_endpoint.or_insert(new_conn.connection);
+  }
+  let server_id = server_id.to_owned();
   tokio::spawn(async move {
     receive_uni_stream(new_conn.uni_streams).await.log();
+    debug!("QUIC disconnected");
+    let mut retry_times = 60;
+    loop {
+      match connect(&SERVER, &server_id).await.log() {
+        Some(_) => break,
+        None => {
+          retry_times -= 1;
+          if retry_times <= 0 {
+            warn!("Failed to reconnect QUIC server {server_id}");
+            break;
+          }
+          tokio::time::sleep(Duration::from_secs(1)).await;
+          warn!("Retrying to connect QUIC server {server_id}");
+          continue;
+        }
+      }
+    }
   });
   Ok(())
 }
-pub async fn connect(server: &server::Server, server_name: &ArcStr) -> Result<()> {
-  if let Some((_, former)) = server.remote_endpoints.remove(server_name) {
+pub async fn connect(server: &server::Server, server_id: &ArcStr) -> Result<()> {
+  if let Some((_, former)) = server.remote_endpoints.remove(server_id) {
     former.close(quinn::VarInt::from_u32(2000), b"conflict");
   };
-  if let Some(remote_endpoint) = server.remote_endpoints.try_entry(server_name.clone())
-  && let Some(remote_address) = server.remote_address.get(server_name) {
-    connect_with_entry(server, &remote_address, remote_endpoint).await?;
+  if let Some(remote_endpoint) = server.remote_endpoints.try_entry(server_id.clone())
+  && let Some(remote_address) = server.remote_address.get(server_id) {
+    connect_with_entry(server, server_id, &remote_address, remote_endpoint).await?;
     drop(remote_address);
-    if let Some(subs) = server.subs.get(server_name){
+    if let Some(subs) = server.subs.get(server_id){
       let subs = subs.to_owned();
       for room_id in subs.into_iter() {
-        debug!("Sub {} on {}",room_id, server_name);
+        debug!("Sub {} on {}",room_id, server_id);
         let pkt = Packet::new_sub(room_id);
-        server.send(pkt, server_name).await.log();
+        server.send(pkt, server_id).await.log();
       }
     }
     Ok(())
   } else {
-    Err(eyre!("Server not exists name {}", server_name))
+    Err(eyre!("Server not exists name {}", server_id))
   }
 }
 
