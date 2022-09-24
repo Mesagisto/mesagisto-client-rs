@@ -5,10 +5,8 @@ use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures::future::BoxFuture;
 use lateinit::LateInit;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
-use tokio::sync::{mpsc::channel, oneshot};
-use tracing::error;
+use tokio::{sync::oneshot, task::JoinHandle};
 
 use crate::{db::DB, ResultExt};
 
@@ -20,55 +18,27 @@ pub struct Res {
   pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
 }
 impl Res {
-  async fn poll(&self) -> notify::Result<()> {
-    let (tx, mut rx) = channel(32);
-    let mut watcher = RecommendedWatcher::new(
-      move |res| {
-        let tx_clone = tx.clone();
-        smol::spawn(async move {
-          tx_clone.send(res).await.unwrap();
-        })
-        .detach();
-      },
-      notify::Config::default().with_poll_interval(Duration::from_secs(5)),
-    )?;
-    watcher.watch(self.directory.as_path(), RecursiveMode::NonRecursive)?;
-    while let Some(res) = rx.recv().await {
-      match res {
-        Ok(Event {
-          kind: EventKind::Create(_),
-          paths,
-          ..
-        }) => {
-          for path in paths {
-            let file_name = ArcStr::from(path.file_name().unwrap().to_string_lossy());
-            if let Some((.., handler_list)) = self.handlers.remove(&file_name) {
-              for handler in handler_list {
-                if handler.send(path.clone()).is_err() {
-                  error!("Send a path to a closed handler")
-                }
-              }
+  async fn poll(&self) -> Result<()> {
+    let _: JoinHandle<_> = tokio::spawn(async {
+      let mut interval = tokio::time::interval(Duration::from_millis(200));
+      loop {
+        let mut for_remove = vec![];
+        for entry in &RES.handlers {
+          let path = RES.path(&entry.key());
+          if path.exists() {
+            for_remove.push((entry.key().to_owned(), path));
+          }
+        }
+        for_remove.into_iter().for_each(|v| {
+          if let Some((.., handler_list)) = RES.handlers.remove(&v.0) {
+            for handler in handler_list {
+              handler.send(v.1.to_owned()).log();
             }
           }
-        }
-        Err(e) => error!("Resource watch error: {:?}", e),
-        _ => {}
+        });
+        interval.tick().await;
       }
-      let mut for_remove = vec![];
-      for entry in &self.handlers {
-        let path = self.path(entry.key());
-        if path.exists() {
-          for_remove.push((entry.key().to_owned(), path));
-        }
-      }
-      for_remove.into_iter().for_each(|v| {
-        if let Some((.., handler_list)) = self.handlers.remove(&v.0) {
-          for handler in handler_list {
-            handler.send(v.1.to_owned()).log();
-          }
-        }
-      });
-    }
+    });
     Ok(())
   }
 
@@ -103,7 +73,7 @@ impl Res {
     };
     tokio::fs::create_dir_all(path.as_path()).await.unwrap();
     self.directory.init(path);
-    tokio::spawn(async { RES.poll().await });
+    RES.poll().await;
   }
 
   pub fn put_image_id<U, F>(&self, uid: U, file_id: F)
