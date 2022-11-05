@@ -1,17 +1,21 @@
 use arcstr::ArcStr;
+use educe::Educe;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Educe)]
+#[educe(Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "t")]
 #[non_exhaustive]
 pub enum Event {
   RequestImage {
     #[serde(with = "serde_bytes")]
+    // #[educe(Debug(method = "fmt_bytes"))]
     id: Vec<u8>,
   },
   RespondImage {
     #[serde(with = "serde_bytes")]
+    // #[educe(Debug(method = "fmt_bytes"))]
     id: Vec<u8>,
     url: ArcStr,
   },

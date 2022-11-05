@@ -2,7 +2,7 @@ use std::{path::PathBuf, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
-use futures::FutureExt;
+use futures_util::FutureExt;
 use lateinit::LateInit;
 use tokio::io::AsyncWriteExt;
 

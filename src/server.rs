@@ -1,12 +1,12 @@
-use std::{collections::HashSet, sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc};
 
 use arcstr::ArcStr;
 use async_recursion::async_recursion;
 use color_eyre::eyre::Result;
 use dashmap::DashMap;
-use futures::future::BoxFuture;
+use futures_util::future::BoxFuture;
 use lateinit::LateInit;
-use tokio::{sync::oneshot, time::timeout};
+use tokio::sync::oneshot;
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -14,9 +14,11 @@ use crate::{ws, ResultExt};
 
 pub trait PacketHandler =
   Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static;
+
 use crate::{
   cipher::CIPHER,
   data::{Inbox, Packet},
+  ws::WsConn,
   ControlFlow, NAMESPACE_MSGIST,
 };
 

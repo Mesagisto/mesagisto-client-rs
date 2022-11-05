@@ -21,7 +21,7 @@ impl Res {
       loop {
         let mut for_remove = vec![];
         for entry in &RES.handlers {
-          let path = RES.path(&entry.key());
+          let path = RES.path(entry.key());
           if path.exists() {
             for_remove.push((entry.key().to_owned(), path));
           }
@@ -52,11 +52,7 @@ impl Res {
 
   pub async fn wait_for(&self, id: &ArcStr) -> Result<PathBuf> {
     let (sender, receiver) = oneshot::channel();
-    self
-      .handlers
-      .entry(id.clone())
-      .or_insert(Vec::new())
-      .push(sender);
+    self.handlers.entry(id.clone()).or_default().push(sender);
     let path = tokio::time::timeout(Duration::from_secs_f32(13.0), receiver).await??;
     Ok(path)
   }
