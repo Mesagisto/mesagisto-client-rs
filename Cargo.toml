@@ -10,7 +10,13 @@ default-locale = "en-US"
 load-path = "locales"
 
 [dependencies]
-once_cell = "1.13.1"
+
+# i18n
+i18n-embed = { version = "0.13.4", features = ["fluent-system", "desktop-requester"]}
+i18n-embed-fl = "0.6.4"
+rust-embed = "6"
+
+once_cell = "1.15.0"
 lateinit = { branch = "master", git = "https://github.com/Itsusinn/lateinit-rs.git" }
 smol = "1.2.5"
 tracing = "0.1.36"
