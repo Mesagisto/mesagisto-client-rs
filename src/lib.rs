@@ -1,6 +1,10 @@
 #![feature(fn_traits, trait_alias, box_syntax)]
 #![feature(let_chains)]
-use std::{fmt::Debug, ops::ControlFlow, sync::Arc};
+use std::{
+  fmt::{self, Debug, Formatter},
+  ops::ControlFlow,
+  sync::Arc,
+};
 
 use arcstr::ArcStr;
 use cache::CACHE;
@@ -10,10 +14,13 @@ use dashmap::DashMap;
 use data::Packet;
 use db::DB;
 use educe::Educe;
-use futures::future::BoxFuture;
+use futures_util::future::BoxFuture;
+use i18n::LANGUAGE_LOADER;
 use net::NET;
+use once_cell::sync::Lazy;
 use res::RES;
 use server::SERVER;
+use tls::TLS;
 use uuid::Uuid;
 
 pub mod cache;
@@ -22,36 +29,19 @@ pub mod data;
 pub mod db;
 pub mod error;
 pub mod net;
-pub mod quic;
 pub mod res;
 pub mod server;
 pub mod tls;
+pub mod ws;
 
-#[macro_use]
-extern crate tracing;
+mod i18n;
+
 #[macro_use]
 extern crate singleton;
 #[macro_use]
-extern crate rust_i18n;
-#[macro_use]
 extern crate derive_builder;
 
-i18n!("locales");
-
 const NAMESPACE_MSGIST: Uuid = Uuid::from_u128(31393687336353710967693806936293091922);
-
-#[cfg(test)]
-#[test]
-fn test_uuid() {
-  assert_eq!(
-    "179e3449-c41f-4a57-a763-59a787efaa52",
-    NAMESPACE_MSGIST.to_string()
-  );
-  println!(
-    "{}",
-    Uuid::new_v5(&NAMESPACE_MSGIST, "test".as_bytes()).to_string()
-  );
-}
 
 #[derive(Educe, Builder)]
 #[educe(Default, Debug)]
@@ -61,19 +51,19 @@ pub struct MesagistoConfig {
   pub name: ArcStr,
   pub proxy: Option<ArcStr>,
   pub cipher_key: ArcStr,
-  #[educe(Default = "0.0.0.0:0")]
-  pub local_address: String,
+  pub skip_verify: bool,
+  pub custom_cert: Option<ArcStr>,
   pub remote_address: Arc<DashMap<ArcStr, ArcStr>>,
 }
 impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {
+    Lazy::force(&LANGUAGE_LOADER);
     DB.init(self.name.some());
+    TLS.init(self.skip_verify, self.custom_cert).await?;
     CACHE.init();
     CIPHER.init(&self.cipher_key)?;
     RES.init().await;
-    SERVER
-      .init(&self.local_address, self.remote_address)
-      .await?;
+    SERVER.init(self.remote_address).await?;
     NET.init(self.proxy);
     Ok(())
   }
@@ -100,12 +90,12 @@ impl<T, E: Debug> ResultExt<T, E> for Result<T, E> {
     }
   }
 
-  #[inline]
+  #[inline(always)]
   fn log(self) -> Option<T> {
     match self {
       Ok(v) => Some(v),
       Err(e) => {
-        error!("{:?}", e);
+        tracing::error!("{:?}", e);
         None
       }
     }
@@ -172,3 +162,17 @@ pub trait EitherExt<A> {
   }
 }
 impl<T, A> EitherExt<A> for T {}
+
+pub fn fmt_bytes(vec: &Vec<u8>, _: &mut Formatter) -> fmt::Result {
+  if vec.len() == 4 {
+    // i32::from_be_bytes(vec.as_slice().split(0..4));
+    // to int32 be
+  } else if vec.len() == 8 {
+    // to int64 be
+  } else if vec.len() == 16 {
+    // to uuid
+  } else {
+    // to hex
+  }
+  Ok(())
+}
