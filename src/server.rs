@@ -10,7 +10,7 @@ use tokio::{sync::oneshot, time::timeout};
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{quic, ResultExt};
+use crate::{ws, ResultExt};
 
 pub trait PacketHandler =
   Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static;
@@ -22,8 +22,7 @@ use crate::{
 
 #[derive(Singleton, Default)]
 pub struct Server {
-  pub endpoint: LateInit<quinn::Endpoint>,
-  pub remote_endpoints: DashMap<ArcStr, quinn::Connection>,
+  pub conns: DashMap<ArcStr, WsConn>,
   pub remote_address: LateInit<Arc<DashMap<ArcStr, ArcStr>>>,
   pub packet_handler: LateInit<Box<dyn PacketHandler>>,
   pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
@@ -31,13 +30,9 @@ pub struct Server {
   pub subs: DashMap<ArcStr, HashSet<Arc<Uuid>>>,
 }
 impl Server {
-  pub async fn init(
-    &self,
-    local: &str,
-    remote_address: Arc<DashMap<ArcStr, ArcStr>>,
-  ) -> Result<()> {
+  pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>) -> Result<()> {
     self.remote_address.init(remote_address);
-    crate::quic::init(self, local).await?;
+    crate::ws::init().await?;
     Ok(())
   }
 
@@ -61,42 +56,30 @@ impl Server {
           }
         }
       },
-      None => {}
+      None => (),
     }
   }
 
   #[async_recursion]
   pub async fn send(&self, content: Packet, server_id: &ArcStr) -> Result<()> {
     let payload = content.to_cbor()?;
-    let mut reconnect = true;
-    if let Some(remote) = self.remote_endpoints.get(server_id) {
+    let reconnect;
+    if let Some(remote) = self.conns.get(server_id) {
       let remote = remote.clone();
-      if let Ok(uni) = timeout(Duration::from_secs(2), remote.open_uni()).await
-      && let Some(mut uni) = match uni {
-        Ok(v) => {
-          reconnect = false;
-          Some(v)
-        },
-        Err(quinn::ConnectionError::ApplicationClosed(e)) => {
-          if e.error_code == quinn::VarInt::from_u32(2000) {
-            reconnect = false;
-          }
-          None
-        }
-        Err(_) => {
-          None
-        },
-      }
-      && let Ok(_) = uni.write(&payload).await
-      && let Ok(_) = uni.finish().await {
+      if let Ok(_) = remote
+        .send(tokio_tungstenite::tungstenite::Message::Binary(payload))
+        .await
+      {
         reconnect = false;
-      }
+      } else {
+        reconnect = true;
+      };
     } else {
       reconnect = true;
     };
     if reconnect {
-      info!("reconnecting to {}", server_id);
-      quic::connect(self, server_id).await?;
+      tracing::info!("reconnecting to {}", server_id);
+      ws::connect(server_id).await?;
       self.send(content, server_id).await?;
     }
     Ok(())

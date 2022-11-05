@@ -51,12 +51,10 @@ singleton = { branch = "master", git = "https://github.com/Itsusinn/singleton-rs
 reqwest = { version = "0.11.11", default-features = false, features = ["rustls","rustls-tls","socks","gzip"] }
 educe = { version = "0.4.19", default-features = false, features = ["Default","Debug"] }
 sled = "0.34.7"
-
-# net
-quinn = "0.8.4"
+tokio-tungstenite = { version = "0.17.2",features = ["rustls-tls-native-roots"] }
 
 # tls
-rustls = { version = "0.20.6", features = ["quic"] }
+rustls = { version = "0.20.7", features = ["dangerous_configuration"]}
 rustls-pemfile = "1.0.1"
 rustls-native-certs = "0.6.2"
 
