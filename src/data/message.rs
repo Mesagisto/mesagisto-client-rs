@@ -20,16 +20,19 @@ pub struct Profile {
 pub struct Message {
   pub profile: Profile,
   #[serde(with = "serde_bytes")]
+  pub from: Vec<u8>,
+  #[serde(with = "serde_bytes")]
   pub id: Vec<u8>,
   #[serde(with = "serde_bytes", skip_serializing_if = "Option::is_none", default)]
   pub reply: Option<Vec<u8>>,
   pub chain: Vec<MessageType>,
 }
 impl Message {
-  pub fn new(profile: Profile, id: i32, chain: Vec<MessageType>) -> Self {
+  pub fn new(profile: Profile, id: i32, from: Vec<u8>, chain: Vec<MessageType>) -> Self {
     Message {
       profile,
       id: id.to_be_bytes().to_vec(),
+      from,
       reply: None,
       chain,
     }
@@ -82,6 +85,7 @@ mod test {
         },
       ],
       reply: None,
+      from: 12113i64.to_be_bytes().to_vec(),
     };
 
     let mut data = Vec::new();

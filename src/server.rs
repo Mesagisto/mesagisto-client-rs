@@ -1,3 +1,5 @@
+use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashSet, sync::Arc};
 
 use arcstr::ArcStr;
@@ -30,6 +32,7 @@ pub struct Server {
   pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
   pub room_map: DashMap<ArcStr, Arc<uuid::Uuid>>,
   pub subs: DashMap<ArcStr, HashSet<Arc<Uuid>>>,
+  pub same_side_deliver: AtomicBool,
 }
 impl Server {
   pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>) -> Result<()> {
@@ -64,6 +67,11 @@ impl Server {
 
   #[async_recursion]
   pub async fn send(&self, content: Packet, server_id: &ArcStr) -> Result<()> {
+    if self.same_side_deliver.load(Ordering::SeqCst) {
+      let packet_handler = SERVER.packet_handler.deref();
+      packet_handler(content.clone()).await.log();
+    }
+
     let payload = content.to_cbor()?;
     let reconnect;
     if let Some(remote) = self.conns.get(server_id) {
