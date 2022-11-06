@@ -16,6 +16,7 @@ pub struct Tls {
   pub custom_cert: LateInit<Option<ArcStr>>,
   pub clinet_config: LateInit<Arc<rustls::ClientConfig>>,
 }
+
 impl Tls {
   pub async fn init(&self, skip_verify: bool, custom_cert: Option<ArcStr>) -> Result<()> {
     self.skip_verify.init(skip_verify);

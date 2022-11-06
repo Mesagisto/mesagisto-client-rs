@@ -70,11 +70,13 @@ pub async fn connect_with_entry(
     remote_endpoint.or_insert(tx);
   }
   tokio::spawn(async move {
-    let mut interval = tokio::time::interval(Duration::from_secs(10));
+    let mut interval = tokio::time::interval(Duration::from_secs(30));
     loop {
       tokio::select! {
         _ = interval.tick() => {
-          if let None = write.send(Message::Ping(Vec::new())).await.log() {
+          if let None = write.send(
+            Message::Ping(rand::random::<i64>().to_be_bytes().to_vec())
+          ).await.log() {
             rx.close();
             while let Some(_) = rx.recv().await {
               tracing::warn!("lost message")
@@ -97,18 +99,18 @@ pub async fn connect_with_entry(
   tokio::spawn(async move {
     receive_ws(read).await.log();
     tracing::debug!("WS disconnected");
-    let mut retry_times = 60;
+    let mut retry_times = 1;
     loop {
       tracing::debug!("Trying to connect WS server {server_id}, retry times {retry_times}");
       match connect(&server_id).await.log() {
         Some(_) => break,
         None => {
-          retry_times -= 1;
-          if retry_times <= 0 {
+          retry_times += 1;
+          if retry_times >= 60 {
             tracing::warn!("Failed to reconnect WS server {server_id}");
             break;
           }
-          tokio::time::sleep(Duration::from_secs(1)).await;
+          tokio::time::sleep(Duration::from_secs(2)).await;
           tracing::warn!("Retrying to connect WS server {server_id}");
           continue;
         }
@@ -135,6 +137,7 @@ pub async fn receive_ws(
           });
         }
       }
+      Message::Pong(_) => { }
       Message::Close(_) => {
         break;
       }
