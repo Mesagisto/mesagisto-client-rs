@@ -54,6 +54,7 @@ pub struct MesagistoConfig {
   pub skip_verify: bool,
   pub custom_cert: Option<ArcStr>,
   pub remote_address: Arc<DashMap<ArcStr, ArcStr>>,
+  pub same_side_deliver: bool
 }
 impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {
@@ -63,7 +64,7 @@ impl MesagistoConfig {
     CACHE.init();
     CIPHER.init(&self.cipher_key)?;
     RES.init().await;
-    SERVER.init(self.remote_address).await?;
+    SERVER.init(self.remote_address,self.same_side_deliver).await?;
     NET.init(self.proxy);
     Ok(())
   }

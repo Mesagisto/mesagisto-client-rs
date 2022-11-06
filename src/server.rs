@@ -1,4 +1,3 @@
-use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashSet, sync::Arc};
 
@@ -35,8 +34,9 @@ pub struct Server {
   pub same_side_deliver: AtomicBool,
 }
 impl Server {
-  pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>) -> Result<()> {
+  pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>, same_side_deliver:bool) -> Result<()> {
     self.remote_address.init(remote_address);
+    self.same_side_deliver.store(same_side_deliver, Ordering::SeqCst);
     crate::ws::init().await?;
     Ok(())
   }
@@ -67,9 +67,11 @@ impl Server {
 
   #[async_recursion]
   pub async fn send(&self, content: Packet, server_id: &ArcStr) -> Result<()> {
-    if self.same_side_deliver.load(Ordering::SeqCst) {
-      let packet_handler = SERVER.packet_handler.deref();
-      packet_handler(content.clone()).await.log();
+    if self.same_side_deliver.load(Ordering::SeqCst) && content.ctl.is_none() {
+      let packet = content.clone();
+      tokio::spawn(async move {
+        (SERVER.packet_handler)(packet).await.log();
+      });
     }
 
     let payload = content.to_cbor()?;
