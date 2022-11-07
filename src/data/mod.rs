@@ -1,42 +1,89 @@
 pub mod events;
 pub mod message;
 
-use std::convert::TryFrom;
+use std::sync::Arc;
 
 use aes_gcm::aead::Aead;
-use color_eyre::{eyre, eyre::Result};
+use color_eyre::eyre::Result;
 use either::Either;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use self::{events::Event, message::Message};
 use crate::{cipher::CIPHER, EitherExt, OkExt};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Packet {
   // [event/message]
-  pub r#type: String,
-  #[serde(with = "serde_bytes")]
+  #[serde(rename = "t")]
+  pub ty: String,
+  #[serde(with = "serde_bytes", rename = "c")]
   pub content: Vec<u8>,
-  #[serde(with = "serde_bytes")]
-  pub encrypt: Vec<u8>,
-  pub version: String,
+  #[serde(with = "serde_bytes", rename = "n")]
+  pub nonce: Vec<u8>,
+  #[serde(rename = "rid")]
+  pub room_id: Arc<Uuid>,
+  #[serde(skip_serializing_if = "Option::is_none", default)]
+  pub inbox: Option<Box<Inbox>>,
+  #[serde(skip_serializing_if = "Option::is_none", default)]
+  pub ctl: Option<Ctl>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct EncryptInfo {
-  // [ase-256-gcm]
-  cipher: String,
-  //[u8;12]
-  #[serde(with = "serde_bytes")]
-  nonce: Vec<u8>,
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "t")]
+pub enum Inbox {
+  #[serde(rename = "req")]
+  Request { id: Arc<Uuid> },
+  #[serde(rename = "res")]
+  Respond { id: Arc<Uuid> },
 }
-
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "t")]
+pub enum Ctl {
+  #[serde(rename = "sub")]
+  Sub,
+  #[serde(rename = "unsub")]
+  Unsub,
+}
+impl Default for Inbox {
+  fn default() -> Self {
+    Inbox::Request {
+      id: Arc::new(Uuid::new_v4()),
+    }
+  }
+}
+impl Inbox {
+  pub fn id(&self) -> Arc<Uuid> {
+    match self {
+      Inbox::Request { id } => id.to_owned(),
+      Inbox::Respond { id } => id.to_owned(),
+    }
+  }
+}
 impl Packet {
-  pub fn from(data: Either<message::Message, events::Event>) -> Result<Self> {
-    Self::encrypt_from(data)
+  pub fn new_sub(room: Arc<Uuid>) -> Self {
+    Self {
+      ty: "ctl".to_string(),
+      content: vec![],
+      nonce: vec![],
+      room_id: room,
+      inbox: None,
+      ctl: Some(Ctl::Sub),
+    }
   }
 
-  fn encrypt_from(data: Either<message::Message, events::Event>) -> Result<Self> {
+  pub fn new_unsub(room: Arc<Uuid>) -> Self {
+    Self {
+      ty: "ctl".to_string(),
+      content: vec![],
+      nonce: vec![],
+      room_id: room,
+      inbox: None,
+      ctl: Some(Ctl::Unsub),
+    }
+  }
+
+  pub fn new(room: Arc<Uuid>, data: Either<message::Message, events::Event>) -> Result<Self> {
     let bytes_nonce = CIPHER.new_nonce();
     let nonce = aes_gcm::Nonce::from_slice(&bytes_nonce);
 
@@ -44,49 +91,61 @@ impl Packet {
     let bytes = match data {
       Either::Left(m) => {
         ty = "message";
-        serde_cbor::to_vec(&m)?
+        let mut data = Vec::new();
+        ciborium::ser::into_writer(&m, &mut data)?;
+        data
       }
       Either::Right(e) => {
         ty = "event";
-        serde_cbor::to_vec(&e)?
+        let mut data = Vec::new();
+        ciborium::ser::into_writer(&e, &mut data)?;
+        data
       }
     };
     let ciphertext = CIPHER.encrypt(nonce, bytes.as_ref())?;
     Self {
-      r#type: ty.into(),
+      ty: ty.into(),
       content: ciphertext,
-      encrypt: bytes_nonce.into(),
-      version: "v1".into(),
+      nonce: bytes_nonce.into(),
+      room_id: room,
+      inbox: None,
+      ctl: None,
     }
     .ok()
   }
 
-  pub fn from_cbor(data: &[u8]) -> Result<Either<message::Message, Event>> {
-    let packet: Packet = serde_cbor::from_slice(data)?;
-    let nonce = aes_gcm::Nonce::from_slice(&packet.encrypt);
-    let plaintext = CIPHER.decrypt(nonce, packet.content.as_ref())?;
-    match packet.r#type.as_str() {
-      "message" => serde_cbor::from_slice::<Message>(&plaintext)?
+  pub fn from_cbor(data: &[u8]) -> Result<Packet> {
+    let packet: Packet = ciborium::de::from_reader(data)?;
+    Ok(packet)
+  }
+
+  pub fn decrypt(&self) -> Result<Either<message::Message, Event>> {
+    let nonce = aes_gcm::Nonce::from_slice(&self.nonce);
+    let plaintext = CIPHER.decrypt(nonce, self.content.as_ref())?;
+    match self.ty.as_str() {
+      "message" => ciborium::de::from_reader::<Message, &[u8]>(&*plaintext)?
         .to_left()
         .ok(),
-      "event" => serde_cbor::from_slice::<Event>(&plaintext)?.to_right().ok(),
+      "event" => ciborium::de::from_reader::<Event, &[u8]>(&plaintext)?
+        .to_right()
+        .ok(),
       &_ => unreachable!(),
     }
   }
 
-  pub fn to_cbor(self) -> Result<Vec<u8>> {
-    Ok(serde_cbor::to_vec(&self)?)
+  pub fn to_cbor(&self) -> Result<Vec<u8>> {
+    let mut data = Vec::new();
+    ciborium::ser::into_writer(&self, &mut data)?;
+    Ok(data)
   }
 }
-impl TryFrom<Either<message::Message, events::Event>> for Packet {
-  type Error = eyre::Error;
 
-  fn try_from(value: Either<message::Message, events::Event>) -> Result<Self> {
-    Self::encrypt_from(value)
-  }
-}
 #[cfg(test)]
 mod test {
+  use std::sync::Arc;
+
+  use uuid::Uuid;
+
   use crate::{
     cipher::CIPHER,
     data::{
@@ -97,7 +156,7 @@ mod test {
   };
   #[test]
   fn test() {
-    CIPHER.init(&"this is key".to_string().into());
+    CIPHER.init(&"this is key".to_string().into()).unwrap();
     let message = Message {
       profile: message::Profile {
         id: 1223232i64.to_be_bytes().to_vec(),
@@ -114,11 +173,12 @@ mod test {
           content: "this is text".to_string(),
         },
       ],
+      from: 12113i64.to_be_bytes().to_vec()
     };
-    let packet = Packet::encrypt_from(message.to_left()).unwrap();
-    let cbor_packet = serde_cbor::to_vec(&packet).unwrap();
-    println!("{}", hex::encode(&cbor_packet));
-    let packet2 = Packet::from_cbor(&cbor_packet);
+    let packet = Packet::new(Arc::new(Uuid::from_u128(0)), message.to_left()).unwrap();
+
+    println!("{}", hex::encode(&packet.to_cbor().unwrap()));
+    let packet2 = Packet::from_cbor(&packet.to_cbor().unwrap());
     assert!(packet2.is_ok());
   }
 }

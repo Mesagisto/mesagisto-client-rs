@@ -3,73 +3,39 @@ use std::{path::PathBuf, time::Duration};
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
 use dashmap::DashMap;
-use futures::future::BoxFuture;
 use lateinit::LateInit;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use sled::IVec;
-use tokio::sync::{mpsc::channel, oneshot};
-use tracing::error;
+use tokio::{sync::oneshot, task::JoinHandle};
 
-use crate::{db::DB, OptionExt};
-
-type Handler = dyn Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static;
+use crate::{db::DB, ResultExt};
 
 #[derive(Singleton, Default)]
 pub struct Res {
   pub directory: LateInit<PathBuf>,
   pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
-  pub photo_url_resolver: LateInit<Box<Handler>>,
 }
 impl Res {
-  async fn poll(&self) -> notify::Result<()> {
-    let (tx, mut rx) = channel(32);
-    let mut watcher = RecommendedWatcher::new(move |res| {
-      let tx_clone = tx.clone();
-      smol::spawn(async move {
-        tx_clone.send(res).await.unwrap();
-      })
-      .detach();
-    })?;
-    watcher.watch(self.directory.as_path(), RecursiveMode::NonRecursive)?;
-    while let Some(res) = rx.recv().await {
-      match res {
-        Ok(Event {
-          kind: EventKind::Create(_),
-          paths,
-          ..
-        }) => {
-          for path in paths {
-            let file_name = ArcStr::from(path.file_name().unwrap().to_string_lossy());
-            if let Some((.., handler_list)) = self.handlers.remove(&file_name) {
-              for handler in handler_list {
-                if let Err(_) = handler.send(path.clone()) {
-                  error!("Send a path to a closed handler")
-                }
-              }
-            }
+  async fn poll(&self) {
+    let _: JoinHandle<_> = tokio::spawn(async {
+      let mut interval = tokio::time::interval(Duration::from_millis(200));
+      loop {
+        let mut for_remove = vec![];
+        for entry in &RES.handlers {
+          let path = RES.path(entry.key());
+          if path.exists() {
+            for_remove.push((entry.key().to_owned(), path));
           }
         }
-        // Ok(Event {
-        //   kind: EventKind::Remove(_),
-        //   paths,
-        //   ..
-        // }) => {
-        //   for filename in paths.iter().filter_map(|path| {
-        //     path
-        //       .file_name()
-        //       .map(|str| ArcStr::from(str.to_string_lossy()))
-        //   }) {
-        //     if self.handlers.contains_key(&filename) {
-        //       error!("Resource watch error: file deleted name:{}", filename);
-        //       self.handlers.remove(&filename);
-        //     }
-        //   }
-        // }
-        Err(e) => error!("Resource watch error: {:?}", e),
-        _ => {}
+        for_remove.into_iter().for_each(|v| {
+          if let Some((.., handler_list)) = RES.handlers.remove(&v.0) {
+            for handler in handler_list {
+              handler.send(v.1.to_owned()).log();
+            }
+          }
+        });
+        interval.tick().await;
       }
-    }
-    Ok(())
+    });
   }
 
   pub fn path(&self, id: &ArcStr) -> PathBuf {
@@ -86,11 +52,7 @@ impl Res {
 
   pub async fn wait_for(&self, id: &ArcStr) -> Result<PathBuf> {
     let (sender, receiver) = oneshot::channel();
-    self
-      .handlers
-      .entry(id.clone())
-      .or_insert(Vec::new())
-      .push(sender);
+    self.handlers.entry(id.clone()).or_default().push(sender);
     let path = tokio::time::timeout(Duration::from_secs_f32(13.0), receiver).await??;
     Ok(path)
   }
@@ -103,7 +65,7 @@ impl Res {
     };
     tokio::fs::create_dir_all(path.as_path()).await.unwrap();
     self.directory.init(path);
-    tokio::spawn(async { RES.poll().await });
+    RES.poll().await;
   }
 
   pub fn put_image_id<U, F>(&self, uid: U, file_id: F)
@@ -113,31 +75,4 @@ impl Res {
   {
     DB.put_image_id(uid, file_id);
   }
-
-  pub fn resolve_photo_url<F>(&self, f: F)
-  where
-    F: Fn(&(Vec<u8>, IVec)) -> BoxFuture<Result<ArcStr>> + Send + Sync + 'static,
-  {
-    let h = Box::new(f);
-    self.photo_url_resolver.init(h);
-  }
-
-  pub async fn get_photo_url<T>(&self, uid: T) -> Option<ArcStr>
-  where
-    T: AsRef<[u8]>,
-  {
-    let file_id = DB.get_image_id(&uid)?;
-    let handler = &*self.photo_url_resolver;
-    handler(&(uid.as_ref().to_vec(), file_id))
-      .await
-      .unwrap()
-      .some()
-  }
 }
-
-// #[cfg(test)]
-// mod test {
-//   #[test]
-//   fn test() {
-//   }
-// }

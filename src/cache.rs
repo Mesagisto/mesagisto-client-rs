@@ -1,8 +1,10 @@
-use std::{panic, path::PathBuf, time::Duration};
+use std::{panic, path::PathBuf, sync::Arc, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
+use tokio::time::timeout;
 use tracing::trace;
+use uuid::Uuid;
 
 use crate::{
   data::{events::Event, Packet},
@@ -22,15 +24,21 @@ impl Cache {
     &self,
     id: &Vec<u8>,
     url: &Option<ArcStr>,
-    address: &ArcStr,
+    room: Arc<Uuid>,
+    server: &ArcStr,
   ) -> Result<PathBuf> {
     match url {
       Some(url) => self.file_by_url(id, url).await,
-      None => self.file_by_uid(id, address).await,
+      None => self.file_by_uid(id, room, server).await,
     }
   }
 
-  pub async fn file_by_uid(&self, uid: &Vec<u8>, address: &ArcStr) -> Result<PathBuf> {
+  pub async fn file_by_uid(
+    &self,
+    uid: &Vec<u8>,
+    room: Arc<Uuid>,
+    server: &ArcStr,
+  ) -> Result<PathBuf> {
     let uid_str: ArcStr = base64_url::encode(uid).into();
     trace!("Caching file by uid {}", uid_str);
     let path = RES.path(&uid_str);
@@ -41,18 +49,16 @@ impl Cache {
     let tmp_path = RES.tmp_path(&uid_str);
     if tmp_path.exists() {
       trace!("TmpFile exists,waiting for the file downloading");
-      return Ok(RES.wait_for(&uid_str).await?);
+      return RES.wait_for(&uid_str).await;
     }
     trace!("TmpFile dont exist,requesting image url");
-    let packet: Event = Event::RequestImage { id: uid.clone() };
+    let event: Event = Event::RequestImage { id: uid.clone() };
     // fixme error handling
-    let packet = Packet::from(packet.to_right())?;
+    let packet = Packet::new(room, event.to_right())?;
     // fixme timeout check
-    let response = SERVER.request(address, packet, SERVER.new_lib_header()?);
-    let response = tokio::time::timeout(Duration::from_secs(5), response).await??;
-    trace!("Get the image respond");
-    let r_packet = Packet::from_cbor(&response.payload)?;
-    match r_packet {
+    let packet = timeout(Duration::from_secs(7), SERVER.request(packet, server)).await??;
+
+    match packet.decrypt()? {
       either::Either::Right(event) => match event {
         Event::RespondImage { id, url } => self.file_by_url(&id, &url).await,
         _ => panic!("Not correct response"),

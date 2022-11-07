@@ -1,17 +1,21 @@
 use arcstr::ArcStr;
+use educe::Educe;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Educe)]
+#[educe(Debug)]
 #[serde(rename_all = "snake_case")]
-#[serde(tag = "type")]
+#[serde(tag = "t")]
 #[non_exhaustive]
 pub enum Event {
   RequestImage {
     #[serde(with = "serde_bytes")]
+    // #[educe(Debug(method = "fmt_bytes"))]
     id: Vec<u8>,
   },
   RespondImage {
     #[serde(with = "serde_bytes")]
+    // #[educe(Debug(method = "fmt_bytes"))]
     id: Vec<u8>,
     url: ArcStr,
   },
@@ -33,9 +37,10 @@ mod test {
     let event = Event::RequestImage {
       id: "dd".as_bytes().to_owned(),
     };
-    let strw = serde_cbor::to_vec(&event).unwrap();
-    println!("{} \n check in http://cbor.me/", hex::encode(&strw));
-    let a = serde_cbor::from_slice::<Event>(&strw).is_ok();
+    let mut data = Vec::new();
+    ciborium::ser::into_writer(&event, &mut data).unwrap();
+    println!("{} \n check in http://cbor.me/", hex::encode(&data));
+    let a = ciborium::de::from_reader::<Event, &[u8]>(&data).is_ok();
     assert!(a);
   }
 }
