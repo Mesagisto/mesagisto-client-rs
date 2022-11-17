@@ -58,6 +58,12 @@ pub enum MessageType {
     #[serde(skip_serializing_if = "Option::is_none", default)]
     url: Option<ArcStr>,
   },
+  Sticker {
+    #[serde(with = "serde_bytes")]
+    id: Vec<u8>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    url: Option<ArcStr>,
+  },
 }
 
 #[cfg(test)]

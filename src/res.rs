@@ -1,4 +1,4 @@
-use std::{panic, path::{PathBuf, Path}, sync::Arc, time::Duration};
+use std::{panic, path::PathBuf, sync::Arc, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
