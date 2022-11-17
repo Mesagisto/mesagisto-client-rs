@@ -173,7 +173,7 @@ mod test {
           content: "this is text".to_string(),
         },
       ],
-      from: 12113i64.to_be_bytes().to_vec()
+      from: 12113i64.to_be_bytes().to_vec(),
     };
     let packet = Packet::new(Arc::new(Uuid::from_u128(0)), message.to_left()).unwrap();
 

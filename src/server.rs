@@ -1,5 +1,10 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::{collections::HashSet, sync::Arc};
+use std::{
+  collections::HashSet,
+  sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+  },
+};
 
 use arcstr::ArcStr;
 use async_recursion::async_recursion;
@@ -34,9 +39,15 @@ pub struct Server {
   pub same_side_deliver: AtomicBool,
 }
 impl Server {
-  pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>, same_side_deliver:bool) -> Result<()> {
+  pub async fn init(
+    &self,
+    remote_address: Arc<DashMap<ArcStr, ArcStr>>,
+    same_side_deliver: bool,
+  ) -> Result<()> {
     self.remote_address.init(remote_address);
-    self.same_side_deliver.store(same_side_deliver, Ordering::SeqCst);
+    self
+      .same_side_deliver
+      .store(same_side_deliver, Ordering::SeqCst);
     crate::ws::init().await?;
     Ok(())
   }

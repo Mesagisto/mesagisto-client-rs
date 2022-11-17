@@ -1,4 +1,4 @@
-use std::{panic, path::PathBuf, sync::Arc, time::Duration};
+use std::{panic, path::{PathBuf, Path}, sync::Arc, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
@@ -33,7 +33,14 @@ impl Res {
     self.directory.init(path);
     RES.poll().await;
   }
-
+  pub fn get(&self,name: &ArcStr) -> Option<PathBuf> {
+    let path = self.path(name);
+    if path.exists() {
+      Some(path)
+    } else {
+      None
+    }
+  }
   async fn poll(&self) {
     let _: JoinHandle<_> = tokio::spawn(async {
       let mut interval = tokio::time::interval(Duration::from_millis(200));

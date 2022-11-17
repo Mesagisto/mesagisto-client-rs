@@ -7,7 +7,6 @@ use std::{
 };
 
 use arcstr::ArcStr;
-use cache::CACHE;
 use cipher::CIPHER;
 use color_eyre::eyre::Result;
 use dashmap::DashMap;
@@ -23,7 +22,6 @@ use server::SERVER;
 use tls::TLS;
 use uuid::Uuid;
 
-pub mod cache;
 pub mod cipher;
 pub mod data;
 pub mod db;
@@ -54,17 +52,18 @@ pub struct MesagistoConfig {
   pub skip_verify: bool,
   pub custom_cert: Option<ArcStr>,
   pub remote_address: Arc<DashMap<ArcStr, ArcStr>>,
-  pub same_side_deliver: bool
+  pub same_side_deliver: bool,
 }
 impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {
     Lazy::force(&LANGUAGE_LOADER);
     DB.init(self.name.some());
     TLS.init(self.skip_verify, self.custom_cert).await?;
-    CACHE.init();
     CIPHER.init(&self.cipher_key)?;
     RES.init().await;
-    SERVER.init(self.remote_address,self.same_side_deliver).await?;
+    SERVER
+      .init(self.remote_address, self.same_side_deliver)
+      .await?;
     NET.init(self.proxy);
     Ok(())
   }

@@ -137,7 +137,7 @@ pub async fn receive_ws(
           });
         }
       }
-      Message::Pong(_) => { }
+      Message::Pong(_) => {}
       Message::Close(_) => {
         break;
       }
