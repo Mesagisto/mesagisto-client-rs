@@ -106,11 +106,11 @@ pub async fn connect_with_entry(
         Some(_) => break,
         None => {
           retry_times += 1;
-          if retry_times >= 60 {
+          if retry_times >= 150 {
             tracing::warn!("Failed to reconnect WS server {server_id}");
             break;
           }
-          tokio::time::sleep(Duration::from_secs(2)).await;
+          tokio::time::sleep(Duration::from_secs(10)).await;
           tracing::warn!("Retrying to connect WS server {server_id}");
           continue;
         }

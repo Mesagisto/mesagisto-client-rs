@@ -44,6 +44,7 @@ impl Server {
     remote_address: Arc<DashMap<ArcStr, ArcStr>>,
     same_side_deliver: bool,
   ) -> Result<()> {
+    remote_address.insert("mesagisto".into(), "wss://mesagisto.itsusinn.site".into());
     self.remote_address.init(remote_address);
     self
       .same_side_deliver
