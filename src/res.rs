@@ -33,14 +33,12 @@ impl Res {
     self.directory.init(path);
     RES.poll().await;
   }
-  pub fn get(&self,name: &ArcStr) -> Option<PathBuf> {
+
+  pub fn get(&self, name: &ArcStr) -> Option<PathBuf> {
     let path = self.path(name);
-    if path.exists() {
-      Some(path)
-    } else {
-      None
-    }
+    if path.exists() { Some(path) } else { None }
   }
+
   async fn poll(&self) {
     let _: JoinHandle<_> = tokio::spawn(async {
       let mut interval = tokio::time::interval(Duration::from_millis(200));
