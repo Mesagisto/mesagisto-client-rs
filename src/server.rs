@@ -140,7 +140,7 @@ impl Server {
   #[must_use]
   pub fn request(&self, mut content: Packet, server_name: &ArcStr) -> oneshot::Receiver<Packet> {
     if content.inbox.is_none() {
-      let inbox = box Inbox::default();
+      let inbox = Box::new(Inbox::default());
       content.inbox = Some(inbox);
     }
     let (sender, receiver) = oneshot::channel();
@@ -159,7 +159,7 @@ impl Server {
     inbox: Arc<Uuid>,
     server: &ArcStr,
   ) -> Result<()> {
-    content.inbox.replace(box Inbox::Respond { id: inbox });
+    content.inbox.replace(Box::new(Inbox::Respond { id: inbox }));
     self.send(content, server).await?;
     Ok(())
   }
