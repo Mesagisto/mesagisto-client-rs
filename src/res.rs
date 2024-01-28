@@ -14,7 +14,7 @@ use crate::{
   db::DB,
   net::NET,
   server::SERVER,
-  EitherExt, ResultExt,
+  ResultExt,
 };
 
 #[derive(Singleton, Default)]
@@ -108,6 +108,7 @@ impl Res {
     room: Arc<Uuid>,
     server: &ArcStr,
   ) -> Result<PathBuf> {
+    use crate::data::Payload;
     let uid_str: ArcStr = base64_url::encode(uid).into();
     trace!("Caching file by uid {}", uid_str);
     let path = RES.path(&uid_str);
@@ -123,16 +124,16 @@ impl Res {
     trace!("TmpFile dont exist,requesting image url");
     let event: Event = Event::RequestImage { id: uid.clone() };
     // fixme error handling
-    let packet = Packet::new(room, event.to_right())?;
+    let packet = Packet::new(room, event.into())?;
     // fixme timeout check
     let packet = timeout(Duration::from_secs(7), SERVER.request(packet, server)).await??;
 
     match packet.decrypt()? {
-      either::Either::Right(event) => match event {
+      Payload::MsgPayload { inner: _ } => panic!("Not correct response"),
+      Payload::EventPayload { inner } => match inner {
         Event::RespondImage { id, url } => self.file_by_url(&id, &url).await,
         _ => panic!("Not correct response"),
       },
-      either::Either::Left(_) => panic!("Not correct response"),
     }
   }
 

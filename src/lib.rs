@@ -19,7 +19,6 @@ use net::NET;
 use once_cell::sync::Lazy;
 use res::RES;
 use server::SERVER;
-use tls::TLS;
 use uuid::Uuid;
 
 pub mod cipher;
@@ -29,8 +28,6 @@ pub mod error;
 pub mod net;
 pub mod res;
 pub mod server;
-pub mod tls;
-pub mod ws;
 
 mod i18n;
 
@@ -58,12 +55,9 @@ impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {
     Lazy::force(&LANGUAGE_LOADER);
     DB.init(self.name.some());
-    TLS.init(self.skip_verify, self.custom_cert).await?;
     CIPHER.init(&self.cipher_key)?;
     RES.init().await;
-    SERVER
-      .init(self.remote_address, self.same_side_deliver)
-      .await?;
+    SERVER.init(self.remote_address).await?;
     NET.init(self.proxy);
     Ok(())
   }
@@ -130,38 +124,6 @@ pub trait OptionExt {
   }
 }
 impl<T> OptionExt for T {}
-
-pub trait EitherExt<A> {
-  #[inline]
-  fn to_left(self) -> either::Either<Self, A>
-  where
-    Self: Sized,
-  {
-    either::Either::Left(self)
-  }
-  #[inline]
-  fn tl(self) -> either::Either<Self, A>
-  where
-    Self: Sized,
-  {
-    either::Either::Left(self)
-  }
-  #[inline]
-  fn to_right(self) -> either::Either<A, Self>
-  where
-    Self: Sized,
-  {
-    either::Either::Right(self)
-  }
-  #[inline]
-  fn r(self) -> either::Either<A, Self>
-  where
-    Self: Sized,
-  {
-    either::Either::Right(self)
-  }
-}
-impl<T, A> EitherExt<A> for T {}
 
 pub fn fmt_bytes(vec: &Vec<u8>, _: &mut Formatter) -> fmt::Result {
   if vec.len() == 4 {
