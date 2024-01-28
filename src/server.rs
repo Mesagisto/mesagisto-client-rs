@@ -1,9 +1,6 @@
-use std::{
-  collections::HashSet,
-  sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-  },
+use std::sync::{
+  atomic::{AtomicI64, Ordering},
+  Arc,
 };
 
 use arcstr::ArcStr;
@@ -16,40 +13,32 @@ use tokio::sync::oneshot;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::{ws, ResultExt};
+use crate::OkExt;
 
 pub trait PacketHandler =
   Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static;
 
-use crate::{
-  cipher::CIPHER,
-  data::{Inbox, Packet},
-  ws::WsConn,
-  ControlFlow, NAMESPACE_MSGIST,
-};
+use crate::{cipher::CIPHER, data::Packet, ControlFlow, NAMESPACE_MSGIST};
 
 #[derive(Singleton, Default)]
 pub struct Server {
-  pub conns: DashMap<ArcStr, WsConn>,
+  pub conns: DashMap<ArcStr, nats::Client>,
   pub remote_address: LateInit<Arc<DashMap<ArcStr, ArcStr>>>,
   pub packet_handler: LateInit<Box<dyn PacketHandler>>,
   pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
   pub room_map: DashMap<ArcStr, Arc<uuid::Uuid>>,
-  pub subs: DashMap<ArcStr, HashSet<Arc<Uuid>>>,
-  pub same_side_deliver: AtomicBool,
+  pub subs: DashMap<ArcStr, DashMap<Arc<Uuid>, (AtomicI64, nats::Subscriber)>>,
 }
 impl Server {
-  pub async fn init(
-    &self,
-    remote_address: Arc<DashMap<ArcStr, ArcStr>>,
-    same_side_deliver: bool,
-  ) -> Result<()> {
-    remote_address.insert("mesagisto".into(), "wss://mesagisto.itsusinn.site".into());
+  pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>) -> Result<()> {
+    remote_address.insert("mesagisto".into(), "mesagisto.itsusinn.site".into());
+    for remote in remote_address.iter() {
+      let client = nats::connect(remote.value().as_str()).await?;
+      // TODO(logging)
+      self.conns.insert(remote.key().to_owned(), client);
+    }
     self.remote_address.init(remote_address);
-    self
-      .same_side_deliver
-      .store(same_side_deliver, Ordering::SeqCst);
-    crate::ws::init().await?;
+
     Ok(())
   }
 
@@ -63,104 +52,100 @@ impl Server {
       .clone()
   }
 
-  pub async fn handle_rest_pkt(&self, mut pkt: Packet) {
-    match pkt.inbox.take() {
-      Some(inbox) => match *inbox {
-        Inbox::Request { .. } => {}
-        Inbox::Respond { id } => {
-          if let Some(sender) = self.inbox.remove(&id) {
-            let _ = sender.1.send(pkt);
-          }
-        }
-      },
-      None => (),
-    }
-  }
-
   #[async_recursion]
-  pub async fn send(&self, content: Packet, server_id: &ArcStr) -> Result<()> {
-    if self.same_side_deliver.load(Ordering::SeqCst) && content.ctl.is_none() {
-      let packet = content.clone();
-      tokio::spawn(async move {
-        (SERVER.packet_handler)(packet).await.log();
-      });
-    }
-
-    let payload = content.to_cbor()?;
-    let reconnect;
-    if let Some(remote) = self.conns.get(server_id) {
-      let remote = remote.clone();
-      if let Ok(_) = remote
-        .send(tokio_tungstenite::tungstenite::Message::Binary(payload))
-        .await
-      {
-        reconnect = false;
-      } else {
-        reconnect = true;
-      };
+  pub async fn send(&self, pkt: Packet, server_name: &ArcStr) -> Result<()> {
+    if let Some(remote) = self.conns.get(server_name) {
+      remote
+        .publish(
+          base64_url::encode(pkt.room_id.as_bytes()),
+          pkt.content.into(),
+        )
+        .await?;
     } else {
-      reconnect = true;
+      // TODO(logging)
     };
-    if reconnect {
-      tracing::info!("reconnecting to {}", server_id);
-      ws::connect(server_id).await?;
-      self.send(content, server_id).await?;
-    }
     Ok(())
   }
 
   #[instrument(skip(self))]
   pub async fn sub(&self, room_id: Arc<Uuid>, server_name: &ArcStr) -> Result<()> {
-    let mut entry = self
-      .subs
-      .entry(server_name.to_owned())
-      .or_insert_with(Default::default);
-    entry.insert(room_id.clone());
-    entry.shrink_to_fit();
-    drop(entry);
-    let pkt = Packet::new_sub(room_id);
-    self.send(pkt, server_name).await?;
+    if let Some(remote) = self.conns.get(server_name) {
+      let entry = self
+        .subs
+        .entry(server_name.to_owned())
+        .or_insert_with(Default::default);
+      let subs = entry.value().entry(room_id.to_owned()).or_insert((
+        AtomicI64::new(0),
+        remote
+          .value()
+          .subscribe(base64_url::encode(room_id.as_bytes()))
+          .await?,
+      ));
+      let counter = &subs.value().0;
+      counter.fetch_add(1, Ordering::SeqCst);
+    } else {
+      // TODO(logging)
+    };
+
     Ok(())
   }
 
   #[instrument(skip(self))]
-  pub async fn unsub(&self, room: Arc<Uuid>, server: &ArcStr) -> Result<()> {
-    let mut entry = self
+  pub async fn unsub(&self, room_id: Arc<Uuid>, server: &ArcStr) -> Result<()> {
+    let entry = self
       .subs
       .entry(server.to_owned())
       .or_insert_with(Default::default);
-    entry.remove(&room);
-    entry.shrink_to_fit();
-    drop(entry);
-    let pkt = Packet::new_unsub(room);
-    self.send(pkt, server).await?;
+
+    if let Some(subs) = entry.value().get(&room_id) {
+      subs.0.fetch_sub(1, Ordering::SeqCst);
+      if subs.0.load(Ordering::SeqCst) < 1 {
+        if let Some((_, mut former)) = entry.value().remove(&room_id) {
+          former.1.unsubscribe().await?;
+        }
+      }
+    }
     Ok(())
   }
 
-  #[must_use]
-  pub fn request(&self, mut content: Packet, server_name: &ArcStr) -> oneshot::Receiver<Packet> {
-    if content.inbox.is_none() {
-      let inbox = Box::new(Inbox::default());
-      content.inbox = Some(inbox);
+  #[instrument(skip(self))]
+  pub async fn request(&self, pkt: Packet, server_name: &ArcStr) -> Result<Packet> {
+    if let Some(remote) = self.conns.get(server_name) {
+      let msg = remote
+        .request(
+          base64_url::encode(pkt.room_id.as_bytes()),
+          pkt.content.into(),
+        )
+        .await?;
+      Packet {
+        content: msg.payload.into(),
+        room_id: pkt.room_id,
+      }
+      .ok()
+    } else {
+      Err(color_eyre::eyre::eyre!("No specified server found"))
     }
-    let (sender, receiver) = oneshot::channel();
-    let id = content.inbox.as_ref().unwrap().id();
-    self.inbox.insert(id, sender);
-    let server_name = server_name.to_owned();
-    tokio::spawn(async move {
-      SERVER.send(content, &server_name).await.log();
-    });
-    receiver
   }
 
   pub async fn respond(
     &self,
-    mut content: Packet,
-    inbox: Arc<Uuid>,
-    server: &ArcStr,
+    pkt: Packet,
+    inbox: nats::Message,
+    server_name: &ArcStr,
   ) -> Result<()> {
-    content.inbox.replace(Box::new(Inbox::Respond { id: inbox }));
-    self.send(content, server).await?;
+    if let Some(remote) = self.conns.get(server_name)
+      && let Some(reply) = inbox.reply
+    {
+      remote
+        .publish_with_reply(
+          base64_url::encode(pkt.room_id.as_bytes()),
+          reply,
+          pkt.content.into(),
+        )
+        .await?;
+    } else {
+      // TODO(logging) Err(color_eyre::eyre::eyre!("No specified server found"))
+    }
     Ok(())
   }
 }
