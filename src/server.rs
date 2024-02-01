@@ -7,9 +7,9 @@ use arcstr::ArcStr;
 use async_recursion::async_recursion;
 use color_eyre::eyre::Result;
 use dashmap::DashMap;
-use futures_util::future::BoxFuture;
+use futures_util::{future::BoxFuture, StreamExt};
 use lateinit::LateInit;
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -27,7 +27,7 @@ pub struct Server {
   pub packet_handler: LateInit<Box<dyn PacketHandler>>,
   pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
   pub room_map: DashMap<ArcStr, Arc<uuid::Uuid>>,
-  pub subs: DashMap<ArcStr, DashMap<Arc<Uuid>, (AtomicI64, nats::Subscriber)>>,
+  pub subs: DashMap<ArcStr, DashMap<Arc<Uuid>, (AtomicI64, JoinHandle<()>)>>,
 }
 impl Server {
   pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>) -> Result<()> {
@@ -56,10 +56,7 @@ impl Server {
   pub async fn send(&self, pkt: Packet, server_name: &ArcStr) -> Result<()> {
     if let Some(remote) = self.conns.get(server_name) {
       remote
-        .publish(
-          pkt.room_id.as_hyphenated().to_string(),
-          pkt.content.into(),
-        )
+        .publish(pkt.room_id.as_hyphenated().to_string(), pkt.content.into())
         .await?;
     } else {
       // TODO(logging)
@@ -74,14 +71,25 @@ impl Server {
         .subs
         .entry(server_name.to_owned())
         .or_insert_with(Default::default);
-      let subs = entry.value().entry(room_id.to_owned()).or_insert((
-        AtomicI64::new(0),
-        remote
-          .value()
-          .subscribe(room_id.as_hyphenated().to_string())
-          .await?,
-      ));
+      let client = remote.value().clone();
+      let subs = entry
+        .value()
+        .entry(room_id.to_owned())
+        .or_insert_with(move || {
+          let handle = tokio::spawn(async move {
+            let mut sub = client
+              .subscribe(room_id.as_hyphenated().to_string())
+              .await
+              .expect("Failed to subscribe");
+            while let Some(next) = sub.next().await {
+              next.payload;
+              todo!()
+            }
+          });
+          (AtomicI64::new(0), handle)
+        });
       let counter = &subs.value().0;
+
       counter.fetch_add(1, Ordering::SeqCst);
     } else {
       // TODO(logging)
@@ -100,8 +108,9 @@ impl Server {
     if let Some(subs) = entry.value().get(&room_id) {
       subs.0.fetch_sub(1, Ordering::SeqCst);
       if subs.0.load(Ordering::SeqCst) < 1 {
-        if let Some((_, mut former)) = entry.value().remove(&room_id) {
-          former.1.unsubscribe().await?;
+        if let Some((_, former)) = entry.value().remove(&room_id) {
+
+          former.1.abort();
         }
       }
     }
@@ -112,10 +121,7 @@ impl Server {
   pub async fn request(&self, pkt: Packet, server_name: &ArcStr) -> Result<Packet> {
     if let Some(remote) = self.conns.get(server_name) {
       let msg = remote
-        .request(
-          pkt.room_id.as_hyphenated().to_string(),
-          pkt.content.into(),
-        )
+        .request(pkt.room_id.as_hyphenated().to_string(), pkt.content.into())
         .await?;
       Packet {
         content: msg.payload.into(),
@@ -137,8 +143,7 @@ impl Server {
       && let Some(reply) = inbox.reply
     {
       remote
-        .publish_with_reply(
-          pkt.room_id.as_hyphenated().to_string(),
+        .publish(
           reply,
           pkt.content.into(),
         )

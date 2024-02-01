@@ -1,4 +1,5 @@
 #![feature(fn_traits, trait_alias)]
+#![feature(async_closure)]
 #![feature(let_chains)]
 use std::{
   fmt::{self, Debug, Formatter},

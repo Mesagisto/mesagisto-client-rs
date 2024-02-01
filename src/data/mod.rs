@@ -18,14 +18,14 @@ pub struct Packet {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(tag = "ty")]
+#[serde(tag = "t")]
 pub enum Payload {
-  #[serde(rename = "message")]
+  #[serde(rename = "m")]
   MsgPayload {
     #[serde(flatten)]
     inner: Message,
   },
-  #[serde(rename = "event")]
+  #[serde(rename = "e")]
   EventPayload {
     #[serde(flatten)]
     inner: Event,

@@ -34,4 +34,5 @@ impl Cipher {
     self.inner.init(cipher);
     Ok(())
   }
+
 }
