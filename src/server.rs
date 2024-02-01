@@ -57,7 +57,7 @@ impl Server {
     if let Some(remote) = self.conns.get(server_name) {
       remote
         .publish(
-          base64_url::encode(pkt.room_id.as_bytes()),
+          pkt.room_id.as_hyphenated().to_string(),
           pkt.content.into(),
         )
         .await?;
@@ -78,7 +78,7 @@ impl Server {
         AtomicI64::new(0),
         remote
           .value()
-          .subscribe(base64_url::encode(room_id.as_bytes()))
+          .subscribe(room_id.as_hyphenated().to_string())
           .await?,
       ));
       let counter = &subs.value().0;
@@ -113,7 +113,7 @@ impl Server {
     if let Some(remote) = self.conns.get(server_name) {
       let msg = remote
         .request(
-          base64_url::encode(pkt.room_id.as_bytes()),
+          pkt.room_id.as_hyphenated().to_string(),
           pkt.content.into(),
         )
         .await?;
@@ -138,7 +138,7 @@ impl Server {
     {
       remote
         .publish_with_reply(
-          base64_url::encode(pkt.room_id.as_bytes()),
+          pkt.room_id.as_hyphenated().to_string(),
           reply,
           pkt.content.into(),
         )
