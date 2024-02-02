@@ -1,4 +1,4 @@
-use std::{panic, path::PathBuf, sync::Arc, time::Duration};
+use std::{panic, path::PathBuf, time::Duration};
 
 use arcstr::ArcStr;
 use color_eyre::eyre::Result;
@@ -21,6 +21,7 @@ use crate::{
 pub struct Res {
   pub directory: LateInit<PathBuf>,
   pub handlers: DashMap<ArcStr, Vec<oneshot::Sender<PathBuf>>>,
+  handle: LateInit<JoinHandle<()>>
 }
 impl Res {
   pub async fn init(&self) {
@@ -40,7 +41,7 @@ impl Res {
   }
 
   async fn poll(&self) {
-    let _: JoinHandle<_> = tokio::spawn(async {
+    let handle: JoinHandle<_> = tokio::spawn(async {
       let mut interval = tokio::time::interval(Duration::from_millis(200));
       loop {
         let mut for_remove = vec![];
@@ -60,6 +61,7 @@ impl Res {
         interval.tick().await;
       }
     });
+    self.handle.init(handle);
   }
 
   pub fn path(&self, id: &ArcStr) -> PathBuf {
@@ -93,7 +95,7 @@ impl Res {
     &self,
     id: &Vec<u8>,
     url: &Option<ArcStr>,
-    room: Arc<Uuid>,
+    room: &Uuid,
     server: &ArcStr,
   ) -> Result<PathBuf> {
     match url {
@@ -105,7 +107,7 @@ impl Res {
   pub async fn file_by_uid(
     &self,
     uid: &Vec<u8>,
-    room: Arc<Uuid>,
+    room: &Uuid,
     server: &ArcStr,
   ) -> Result<PathBuf> {
     use crate::data::Payload;
@@ -124,16 +126,15 @@ impl Res {
     trace!("TmpFile dont exist,requesting image url");
     let event: Event = Event::RequestImage { id: uid.clone() };
     // fixme error handling
-    let packet = Packet::new(room, event.into())?;
+    let packet = Packet::new(room.to_owned(), event.into())?;
     // fixme timeout check
     let packet = timeout(Duration::from_secs(7), SERVER.request(packet, server)).await??;
 
     match packet.decrypt()? {
-      Payload::MsgPayload { inner: _ } => panic!("Not correct response"),
-      Payload::EventPayload { inner } => match inner {
-        Event::RespondImage { id, url } => self.file_by_url(&id, &url).await,
-        _ => panic!("Not correct response"),
+      Payload::EventPayload(Event::RespondImage { id, url }) =>  {
+        self.file_by_url(&id, &url).await
       },
+      _ => panic!("Not correct response")
     }
   }
 

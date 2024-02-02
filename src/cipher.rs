@@ -1,10 +1,14 @@
+use core::slice::SlicePattern;
 use std::ops::Deref;
 
 use aes::Aes256;
-use aes_gcm_siv::{Aes256GcmSiv, AesGcmSiv, KeyInit};
+use aes_gcm_siv::{aead::Aead, Aes256GcmSiv, AesGcmSiv, KeyInit};
 use arcstr::ArcStr;
+use bytes::Bytes;
 use color_eyre::eyre::Result;
 use lateinit::LateInit;
+
+use crate::data::Payload;
 
 #[derive(Singleton, Default)]
 pub struct Cipher {
@@ -33,6 +37,10 @@ impl Cipher {
     let cipher = Aes256GcmSiv::new_from_slice(self.key.as_slice())?;
     self.inner.init(cipher);
     Ok(())
+  }
+  pub fn decrypt_payload(&self,payload: Bytes) -> Result<Payload> {
+    let plain = self.decrypt(&self.nonce, payload.as_slice())?;
+    Payload::from_cbor(plain.as_slice())
   }
 
 }

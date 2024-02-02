@@ -9,11 +9,11 @@ use color_eyre::eyre::Result;
 use dashmap::DashMap;
 use futures_util::{future::BoxFuture, StreamExt};
 use lateinit::LateInit;
-use tokio::{sync::oneshot, task::JoinHandle};
+use tokio::task::JoinHandle;
 use tracing::instrument;
 use uuid::Uuid;
 
-use crate::OkExt;
+use crate::{OkExt, ResultExt};
 
 pub trait PacketHandler =
   Fn(Packet) -> BoxFuture<'static, Result<ControlFlow<Packet>>> + Send + Sync + 'static;
@@ -25,13 +25,13 @@ pub struct Server {
   pub conns: DashMap<ArcStr, nats::Client>,
   pub remote_address: LateInit<Arc<DashMap<ArcStr, ArcStr>>>,
   pub packet_handler: LateInit<Box<dyn PacketHandler>>,
-  pub inbox: DashMap<Arc<Uuid>, oneshot::Sender<Packet>>,
-  pub room_map: DashMap<ArcStr, Arc<uuid::Uuid>>,
-  pub subs: DashMap<ArcStr, DashMap<Arc<Uuid>, (AtomicI64, JoinHandle<()>)>>,
+
+  pub room_map: DashMap<ArcStr, uuid::Uuid>,
+  pub subs: DashMap<ArcStr, DashMap<Uuid, (AtomicI64, JoinHandle<()>)>>,
 }
 impl Server {
   pub async fn init(&self, remote_address: Arc<DashMap<ArcStr, ArcStr>>) -> Result<()> {
-    remote_address.insert("mesagisto".into(), "mesagisto.itsusinn.site".into());
+    remote_address.insert("mesagisto".into(), "itsusinn.site:4222".into());
     for remote in remote_address.iter() {
       let client = nats::connect(remote.value().as_str()).await?;
       // TODO(logging)
@@ -42,14 +42,14 @@ impl Server {
     Ok(())
   }
 
-  pub fn room_id(&self, room_address: ArcStr) -> Arc<Uuid> {
+  pub fn room_id(&self, room_address: ArcStr) -> Uuid {
     let entry = self.room_map.entry(room_address.clone());
-    entry
+    *entry
       .or_insert_with(|| {
         let unique_address = format!("{}{}", room_address, *CIPHER.origin_key);
-        Arc::new(Uuid::new_v5(&NAMESPACE_MSGIST, unique_address.as_bytes()))
+        Uuid::new_v5(&NAMESPACE_MSGIST, unique_address.as_bytes())
       })
-      .clone()
+
   }
 
   #[async_recursion]
@@ -65,12 +65,12 @@ impl Server {
   }
 
   #[instrument(skip(self))]
-  pub async fn sub(&self, room_id: Arc<Uuid>, server_name: &ArcStr) -> Result<()> {
+  pub async fn sub(&self, room_id: Uuid, server_name: &ArcStr) -> Result<()> {
     if let Some(remote) = self.conns.get(server_name) {
       let entry = self
         .subs
         .entry(server_name.to_owned())
-        .or_insert_with(Default::default);
+        .or_default();
       let client = remote.value().clone();
       let subs = entry
         .value()
@@ -82,8 +82,12 @@ impl Server {
               .await
               .expect("Failed to subscribe");
             while let Some(next) = sub.next().await {
-              next.payload;
-              todo!()
+              let pkt = Packet {
+                content: next.payload.to_vec(),
+                room_id,
+                reply:next.reply
+              };
+              (SERVER.packet_handler)(pkt).await.log();
             }
           });
           (AtomicI64::new(0), handle)
@@ -99,11 +103,11 @@ impl Server {
   }
 
   #[instrument(skip(self))]
-  pub async fn unsub(&self, room_id: Arc<Uuid>, server: &ArcStr) -> Result<()> {
+  pub async fn unsub(&self, room_id: &Uuid, server: &ArcStr) -> Result<()> {
     let entry = self
       .subs
       .entry(server.to_owned())
-      .or_insert_with(Default::default);
+      .or_default();
 
     if let Some(subs) = entry.value().get(&room_id) {
       subs.0.fetch_sub(1, Ordering::SeqCst);
@@ -126,6 +130,7 @@ impl Server {
       Packet {
         content: msg.payload.into(),
         room_id: pkt.room_id,
+        reply: None
       }
       .ok()
     } else {
@@ -136,12 +141,10 @@ impl Server {
   pub async fn respond(
     &self,
     pkt: Packet,
-    inbox: nats::Message,
+    reply: nats::Subject,
     server_name: &ArcStr,
   ) -> Result<()> {
-    if let Some(remote) = self.conns.get(server_name)
-      && let Some(reply) = inbox.reply
-    {
+    if let Some(remote) = self.conns.get(server_name){
       remote
         .publish(
           reply,
