@@ -1,6 +1,7 @@
 #![feature(fn_traits, trait_alias)]
 #![feature(async_closure)]
 #![feature(let_chains)]
+#![feature(slice_pattern)]
 use std::{
   fmt::{self, Debug, Formatter},
   ops::ControlFlow,
@@ -47,10 +48,7 @@ pub struct MesagistoConfig {
   pub name: ArcStr,
   pub proxy: Option<ArcStr>,
   pub cipher_key: ArcStr,
-  pub skip_verify: bool,
-  pub custom_cert: Option<ArcStr>,
-  pub remote_address: Arc<DashMap<ArcStr, ArcStr>>,
-  pub same_side_deliver: bool,
+  pub remote_address: Option<ArcStr>,
 }
 impl MesagistoConfig {
   pub async fn apply(self) -> Result<()> {
@@ -126,16 +124,7 @@ pub trait OptionExt {
 }
 impl<T> OptionExt for T {}
 
-pub fn fmt_bytes(vec: &Vec<u8>, _: &mut Formatter) -> fmt::Result {
-  if vec.len() == 4 {
-    // i32::from_be_bytes(vec.as_slice().split(0..4));
-    // to int32 be
-  } else if vec.len() == 8 {
-    // to int64 be
-  } else if vec.len() == 16 {
-    // to uuid
-  } else {
-    // to hex
-  }
+pub fn fmt_bytes(vec: &Vec<u8>, formater: &mut Formatter) -> fmt::Result {
+  formater.write_str(&hex::encode(vec))?;
   Ok(())
 }

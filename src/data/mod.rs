@@ -1,10 +1,9 @@
 pub mod events;
 pub mod message;
 
-use std::sync::Arc;
-
 use aes_gcm_siv::aead::Aead;
 use color_eyre::eyre::Result;
+use nats::Subject;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -14,36 +13,31 @@ use crate::{cipher::CIPHER, OkExt};
 #[derive(Debug)]
 pub struct Packet {
   pub content: Vec<u8>,
-  pub room_id: Arc<Uuid>,
+  pub room_id: Uuid,
+  pub reply: Option<Subject>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "t")]
 pub enum Payload {
   #[serde(rename = "m")]
-  MsgPayload {
-    #[serde(flatten)]
-    inner: Message,
-  },
+  MsgPayload(Message),
   #[serde(rename = "e")]
-  EventPayload {
-    #[serde(flatten)]
-    inner: Event,
-  },
+  EventPayload(Event),
 }
 impl From<Message> for Payload {
   fn from(value: Message) -> Self {
-    Self::MsgPayload { inner: value }
+    Self::MsgPayload(value)
   }
 }
 impl From<Event> for Payload {
   fn from(value: Event) -> Self {
-    Self::EventPayload { inner: value }
+    Self::EventPayload(value)
   }
 }
 
 impl Packet {
-  pub fn new(room: Arc<Uuid>, payload: Payload) -> Result<Self> {
+  pub fn new(room: Uuid, payload: Payload) -> Result<Self> {
     let mut bytes = Vec::new();
     ciborium::ser::into_writer(&payload, &mut bytes)?;
 
@@ -51,6 +45,7 @@ impl Packet {
     Self {
       content: ciphertext,
       room_id: room,
+      reply: None,
     }
     .ok()
   }
@@ -68,7 +63,7 @@ impl Payload {
   }
 
   pub fn from_cbor(data: &[u8]) -> Result<Payload> {
-    ciborium::de::from_reader::<Payload, &[u8]>(&data)?.ok()
+    ciborium::de::from_reader::<Payload, &[u8]>(data)?.ok()
   }
 }
 #[cfg(test)]
